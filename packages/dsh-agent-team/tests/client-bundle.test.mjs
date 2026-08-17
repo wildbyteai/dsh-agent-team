@@ -10,6 +10,17 @@ function textOf(node) {
   return textOf(node.children)
 }
 
+function findNodes(node, predicate, matches = []) {
+  if (node === null || node === undefined || typeof node !== 'object') return matches
+  if (Array.isArray(node)) {
+    for (const child of node) findNodes(child, predicate, matches)
+    return matches
+  }
+  if (predicate(node)) matches.push(node)
+  for (const child of node.children ?? []) findNodes(child, predicate, matches)
+  return matches
+}
+
 function deferred() {
   let resolve
   let reject
@@ -100,11 +111,46 @@ test('Browser bundle registers the expert roster and mission command views', asy
       return () => { delete this.agentTeam }
     },
   }
+  const settingsBindings = []
+  const settingsWrites = []
+  const settingsListeners = new Set()
+  let settingsSnapshot = {
+    status: 'ready',
+    value: { roleOverrides: {} },
+    base: { roleOverrides: {} },
+    user: undefined,
+    revision: 0,
+    writable: true,
+    mode: 'host',
+  }
+  const roleSettings = {
+    getSnapshot: () => settingsSnapshot,
+    subscribe(listener) {
+      settingsListeners.add(listener)
+      return () => { settingsListeners.delete(listener) }
+    },
+    async set(field, value) {
+      settingsWrites.push({ field, value })
+      settingsSnapshot = {
+        ...settingsSnapshot,
+        value: { ...settingsSnapshot.value, [field]: value },
+        revision: settingsSnapshot.revision + 1,
+      }
+      for (const listener of [...settingsListeners]) listener()
+    },
+  }
+  const settingsScope = {
+    bind(spec) {
+      settingsBindings.push(spec)
+      return roleSettings
+    },
+  }
   const eventListeners = new Map()
   const effectDisposers = []
   const pendingEffects = []
   const ctx = {
     remote,
+    settingsScope,
     slots: {
       inject(name, mount) {
         entries.push({ kind: 'injection', name })
@@ -168,6 +214,84 @@ test('Browser bundle registers the expert roster and mission command views', asy
   assert.match(settingsText, /\/tools\/codex/)
   assert.match(settingsText, /复审/)
   assert.doesNotMatch(settingsText, /等待主机扫描/)
+
+  assert.equal(settingsBindings.length, 1)
+  assert.equal(settingsBindings[0].namespace, 'agent-team')
+  const codexPlanButton = findNodes(
+    registrations[0].component(registrations[0].options.inject()),
+    node => node.type === 'button'
+      && node.props['data-agent-id'] === 'codex'
+      && node.props['data-role'] === 'plan',
+  )[0]
+  assert.ok(codexPlanButton)
+  assert.equal(codexPlanButton.props['aria-pressed'], false)
+  const codexResearchButton = findNodes(
+    registrations[0].component(registrations[0].options.inject()),
+    node => node.type === 'button'
+      && node.props['data-agent-id'] === 'codex'
+      && node.props['data-role'] === 'research',
+  )[0]
+  const planWrite = codexPlanButton.props.onClick()
+  const researchWrite = codexResearchButton.props.onClick()
+  await Promise.all([planWrite, researchWrite])
+  assert.equal(settingsWrites.length, 2)
+  assert.equal(settingsWrites[0].field, 'roleOverrides')
+  assert.equal(
+    JSON.stringify(settingsWrites[0].value),
+    JSON.stringify({ codex: ['plan', 'execute', 'review'] }),
+  )
+  assert.equal(settingsWrites[1].field, 'roleOverrides')
+  assert.equal(
+    JSON.stringify(settingsWrites[1].value),
+    JSON.stringify({ codex: ['plan', 'execute', 'review', 'research'] }),
+  )
+  const selectedCodexPlanButton = findNodes(
+    registrations[0].component(registrations[0].options.inject()),
+    node => node.type === 'button'
+      && node.props['data-agent-id'] === 'codex'
+      && node.props['data-role'] === 'plan',
+  )[0]
+  assert.equal(selectedCodexPlanButton.props['aria-pressed'], true)
+  const selectedCodexResearchButton = findNodes(
+    registrations[0].component(registrations[0].options.inject()),
+    node => node.type === 'button'
+      && node.props['data-agent-id'] === 'codex'
+      && node.props['data-role'] === 'research',
+  )[0]
+  assert.equal(selectedCodexResearchButton.props['aria-pressed'], true)
+
+  settingsSnapshot = {
+    ...settingsSnapshot,
+    value: { roleOverrides: { codex: ['review'] } },
+  }
+  const singleRoleView = registrations[0].component(registrations[0].options.inject())
+  const lastCodexRoleButton = findNodes(
+    singleRoleView,
+    node => node.type === 'button'
+      && node.props['data-agent-id'] === 'codex'
+      && node.props['data-role'] === 'review',
+  )[0]
+  const addCodexRoleButton = findNodes(
+    singleRoleView,
+    node => node.type === 'button'
+      && node.props['data-agent-id'] === 'codex'
+      && node.props['data-role'] === 'plan',
+  )[0]
+  assert.equal(lastCodexRoleButton.props.disabled, true)
+  assert.equal(addCodexRoleButton.props.disabled, false)
+
+  settingsSnapshot = { ...settingsSnapshot, writable: false }
+  const readOnlyButtons = findNodes(
+    registrations[0].component(registrations[0].options.inject()),
+    node => node.type === 'button' && node.props.className === 'dat-role dat-role-toggle',
+  )
+  assert.ok(readOnlyButtons.length > 0)
+  assert.ok(readOnlyButtons.every(button => button.props.disabled === true))
+  settingsSnapshot = {
+    ...settingsSnapshot,
+    value: { roleOverrides: settingsWrites[1].value },
+    writable: true,
+  }
 
   remoteResponses.push(rosterResponse('2026-08-17T12:01:00.000Z', [
     agent({ availability: 'missing', executablePath: null }),

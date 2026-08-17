@@ -45,6 +45,8 @@ const AGENTS = [
   },
 ]
 
+export const AGENT_IDS = Object.freeze(AGENTS.map(agent => agent.id))
+
 /** Locate one executable without starting it or touching its configuration. */
 export async function locateOnPath(command, options = {}) {
   const pathValue = options.pathValue ?? process.env.PATH ?? ''
@@ -65,10 +67,11 @@ export async function locateOnPath(command, options = {}) {
 export function createAgentRoster(options = {}) {
   const locate = options.locate ?? locateOnPath
   const now = options.now ?? (() => new Date().toISOString())
-  const roleOverrides = options.roleOverrides ?? {}
+  const getRoleOverrides = options.getRoleOverrides ?? (() => options.roleOverrides ?? {})
 
   return {
     async snapshot() {
+      const roleOverrides = getRoleOverrides()
       const agents = await Promise.all(AGENTS.map(async definition => {
         const executablePath = definition.command === null ? null : await locate(definition.command)
         return {

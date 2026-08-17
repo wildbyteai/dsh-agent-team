@@ -7,15 +7,20 @@ test('package exposes one static DSH bundle with Host and Browser halves', async
   const patch = await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
 
   assert.equal(manifest.name, 'dsh-agent-team')
+  assert.equal(manifest.version, '0.1.0-dev.2')
   assert.equal(manifest.main, './src/index.mjs')
   assert.equal(manifest.exports['./client'], './lib/client.js')
   assert.equal(manifest.exports['./typert'], './lib/typert.host.js')
+  assert.equal(manifest.exports['./agent-team-settings'], './src/agent-team-settings.mjs')
+  assert.equal(manifest.dependencies['@deepseek-ai/schemastery'], '3.18.1')
   assert.equal(manifest.dependencies.zod, '4.4.3')
   assert.ok(manifest.files.includes('lib/typert.host.js'))
   assert.deepEqual(manifest.dsh, {
     bundle: { patch: './cordis.patch.yml' },
     client: {
       inject: [
+        '@deepseek-ai/dsh-api-remotes',
+        '@deepseek-ai/dsh-client-connection',
         '@deepseek-ai/dsh-client-runtime',
         '@deepseek-ai/dsh-client-ui-settings',
         '@deepseek-ai/dsh-client-ui-conversation',

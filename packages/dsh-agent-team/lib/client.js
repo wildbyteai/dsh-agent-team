@@ -6,6 +6,9 @@
     factory(require) {
       const React = require('react')
       const h = React.createElement
+      const AGENT_TEAM_SETTINGS_NAMESPACE = 'agent-team'
+      const agentRoleIds = ['coordinate', 'plan', 'execute', 'review', 'research', 'synthesize']
+      const editableAgentRoleIds = ['plan', 'execute', 'review', 'research']
 
       function hasExactKeys(value, expectedKeys) {
         const actualKeys = Object.keys(value)
@@ -81,6 +84,43 @@
           setSnapshot(nextSnapshot) {
             snapshot = nextSnapshot
             for (const listener of [...listeners]) listener()
+          },
+        }
+      }
+
+      function roleOverridesOf(snapshot) {
+        const overrides = snapshot?.value?.roleOverrides
+        return overrides !== null && typeof overrides === 'object' && !Array.isArray(overrides)
+          ? overrides
+          : {}
+      }
+
+      function positioningOf(agent, settingsSnapshot) {
+        const override = roleOverridesOf(settingsSnapshot)[agent.id]
+        return Array.isArray(override) ? override : agent.positioning
+      }
+
+      function createRoleEditor(settings) {
+        let tail = Promise.resolve()
+        return {
+          toggle(agent, role) {
+            const task = tail.then(async () => {
+              const snapshot = settings.getSnapshot()
+              if (snapshot.status !== 'ready' || snapshot.writable !== true
+                || !editableAgentRoleIds.includes(role)) return
+              const current = positioningOf(agent, snapshot)
+              const selected = new Set(current.filter(candidate => editableAgentRoleIds.includes(candidate)))
+              if (selected.has(role)) selected.delete(role)
+              else selected.add(role)
+              if (agent.id !== 'deepseek' && selected.size === 0) return
+              const nextRoles = agentRoleIds.filter(candidate => (
+                agent.id === 'deepseek' && (candidate === 'coordinate' || candidate === 'synthesize')
+              ) || selected.has(candidate))
+              const nextOverrides = { ...roleOverridesOf(snapshot), [agent.id]: nextRoles }
+              await settings.set('roleOverrides', nextOverrides)
+            })
+            tail = task.catch(() => {})
+            return task
           },
         }
       }
@@ -226,6 +266,18 @@
   color: #46515b;
   font: 650 10px/1 ui-monospace, "SFMono-Regular", monospace;
 }
+.dat-role-toggle {
+  appearance: none;
+  cursor: pointer;
+  transition: border-color .18s ease, background .18s ease, color .18s ease, transform .18s ease;
+}
+.dat-role-toggle:hover:not(:disabled) { transform: translateY(-1px); }
+.dat-role-toggle[aria-pressed="true"] {
+  border-color: rgba(15, 157, 138, .42);
+  background: rgba(15, 157, 138, .12);
+  color: #087868;
+}
+.dat-role-toggle:disabled { cursor: not-allowed; opacity: .48; }
 .dat-support {
   position: absolute;
   top: 15px;
@@ -431,7 +483,13 @@
         research: '研究',
       }
 
-      function AgentCard(agent, phase) {
+      function AgentCard(agent, phase, settingsSnapshot, roleEditor) {
+        const positioning = positioningOf(agent, settingsSnapshot)
+        const selectedEditable = positioning.filter(role => editableAgentRoleIds.includes(role))
+        const settingsWritable = settingsSnapshot.status === 'ready' && settingsSnapshot.writable === true
+        const fixedRoles = agent.id === 'deepseek'
+          ? positioning.filter(role => role === 'coordinate' || role === 'synthesize')
+          : []
         return h('article', { className: 'dat-agent', key: agent.id },
           h('span', {
             className: 'dat-support',
@@ -441,7 +499,18 @@
           h('h3', { className: 'dat-agent-name' }, agent.displayName),
           h('p', { className: 'dat-agent-status' }, availabilityText(agent, phase)),
           h('div', { className: 'dat-roles' },
-            agent.positioning.map(role => h('span', { className: 'dat-role', key: role }, roleLabels[role] ?? role))))
+            fixedRoles.map(role => h('span', { className: 'dat-role', key: role }, roleLabels[role] ?? role)),
+            editableAgentRoleIds.map(role => h('button', {
+              className: 'dat-role dat-role-toggle',
+              key: role,
+              type: 'button',
+              'data-agent-id': agent.id,
+              'data-role': role,
+              'aria-pressed': selectedEditable.includes(role),
+              disabled: !settingsWritable
+                || (agent.id !== 'deepseek' && selectedEditable.length === 1 && selectedEditable.includes(role)),
+              onClick: () => roleEditor.toggle(agent, role),
+            }, roleLabels[role] ?? role))))
       }
 
       function AgentRosterView(props) {
@@ -450,6 +519,11 @@
           props.store.getSnapshot,
           props.store.getSnapshot,
         )
+        const settingsSnapshot = React.useSyncExternalStore(
+          props.settings.subscribe,
+          props.settings.getSnapshot,
+          props.settings.getSnapshot,
+        )
         return h('section', { className: 'dat-shell dat-roster-view' },
           Header({
             kicker: 'Expert roster',
@@ -457,9 +531,13 @@
             description: 'DeepSeek 按任务需要组建专家团。安装状态来自主机只读扫描，定位来自当前团队配置。',
             mode: snapshot.phase === 'ready' ? '主机已同步' : '只读扫描',
           }),
-          h('div', { className: 'dat-grid' }, snapshot.agents.map(agent => AgentCard(agent, snapshot.phase))),
+          h('div', { className: 'dat-grid' }, snapshot.agents.map(agent => AgentCard(
+            agent, snapshot.phase, settingsSnapshot, props.roleEditor,
+          ))),
           h('p', { className: 'dat-note' },
-            '安装状态与支持等级相互独立：已检测到的 Agent 仍可能因为版本、权限或沙箱条件而被限制。'))
+            settingsSnapshot.status === 'ready' && settingsSnapshot.writable
+              ? '点击角色即可调整团队定位，修改会保存到 Harness 用户设置。安装状态与支持等级仍相互独立。'
+              : '当前设置连接只读；安装状态与支持等级相互独立。'))
       }
 
       function MissionCommandView(props) {
@@ -483,8 +561,10 @@
       }
 
       return {
-        inject: ['slots', 'remote', 'connection'],
+        inject: ['slots', 'remote', 'connection', 'settingsScope'],
         apply(ctx) {
+          const roleSettings = ctx.settingsScope.bind({ namespace: AGENT_TEAM_SETTINGS_NAMESPACE })
+          const roleEditor = createRoleEditor(roleSettings)
           ctx.effect(async () => {
             let disposeRemote
             try {
@@ -525,7 +605,7 @@
               id: 'agent-team',
               order: 45,
               label: '专家团',
-              inject: () => ({ store: rosterStore }),
+              inject: () => ({ store: rosterStore, settings: roleSettings, roleEditor }),
             }, AgentRosterView))
             const disposeMission = ctx.slots.inject('conversation.view', () => ctx.slots.register({
               name: 'conversation.view',

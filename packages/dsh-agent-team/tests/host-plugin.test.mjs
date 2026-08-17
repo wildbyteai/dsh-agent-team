@@ -33,3 +33,51 @@ test('Host plugin publishes the expert-team service without starting providers',
   assert.equal(snapshot.agents.length, 5)
   assert.deepEqual(snapshot.agents.find(agent => agent.id === 'codex')?.positioning, ['review'])
 })
+
+test('Host plugin applies durable role settings to the live roster', async () => {
+  let service
+  let publishSettings
+  const settings = {
+    register(namespace, _schema, options) {
+      assert.equal(namespace, 'agent-team')
+      assert.deepEqual(options.base, { roleOverrides: { codex: ['review'] } })
+      assert.equal(options.applies, 'live')
+      let current = options.base
+      return {
+        get: () => current,
+        watch(callback) {
+          publishSettings = async (next) => {
+            const previous = current
+            current = next
+            await callback(next, previous)
+          }
+          return () => {}
+        },
+      }
+    },
+  }
+  const ctx = {
+    provide(_name, value) {
+      service = value
+    },
+    inject(dependencies, mount) {
+      assert.deepEqual(dependencies, ['settings'])
+      mount({
+        settings,
+        effect(effect) { effect() },
+      })
+    },
+  }
+
+  AgentTeamPlugin(ctx, { roleOverrides: { codex: ['review'] } })
+  assert.deepEqual(
+    (await service.snapshot()).agents.find(agent => agent.id === 'codex')?.positioning,
+    ['review'],
+  )
+
+  await publishSettings({ roleOverrides: { codex: ['plan', 'review'] } })
+  assert.deepEqual(
+    (await service.snapshot()).agents.find(agent => agent.id === 'codex')?.positioning,
+    ['plan', 'review'],
+  )
+})
