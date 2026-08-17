@@ -3,7 +3,7 @@ import test from 'node:test'
 import AgentTeamPlugin from '../src/index.mjs'
 import { TYPERT } from '../lib/typert.host.js'
 
-test('Typert contract accepts the Host roster snapshot and rejects malformed wire data', async () => {
+test('Typert contract validates roster and mission-run snapshots', async () => {
   let service
   AgentTeamPlugin({
     provide(name, value) {
@@ -25,4 +25,26 @@ test('Typert contract accepts the Host roster snapshot and rejects malformed wir
     ...snapshot,
     agents: [{ ...snapshot.agents[0], unexpected: true }, ...snapshot.agents.slice(1)],
   }).success, false)
+
+  const missionSnapshot = TYPERT.invocations.find(candidate => (
+    candidate.id === 'dsh-agent-team#agentTeam/missionSnapshot'
+  ))
+  const startDemo = TYPERT.invocations.find(candidate => (
+    candidate.id === 'dsh-agent-team#agentTeam/startDemo'
+  ))
+  const cancelMission = TYPERT.invocations.find(candidate => (
+    candidate.id === 'dsh-agent-team#agentTeam/cancelMission'
+  ))
+  assert.ok(missionSnapshot)
+  assert.ok(startDemo)
+  assert.ok(cancelMission)
+  assert.deepEqual(missionSnapshot.result.schema.parse(service.missionSnapshot()), null)
+
+  const started = service.startDemo()
+  assert.deepEqual(startDemo.result.schema.parse(started), started)
+  assert.equal(started.status, 'running')
+  const cancelled = service.cancelMission()
+  assert.deepEqual(cancelMission.result.schema.parse(cancelled), cancelled)
+  assert.equal(cancelled.status, 'cancelled')
+  assert.equal(startDemo.result.schema.safeParse({ ...started, unexpected: true }).success, false)
 })

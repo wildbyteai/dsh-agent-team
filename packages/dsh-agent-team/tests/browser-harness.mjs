@@ -61,10 +61,46 @@ export function standardRosterResponse() {
   ])
 }
 
+export function missionSnapshot(overrides = {}) {
+  return {
+    schemaVersion: 1,
+    id: 'mission-demo-1',
+    goal: '验证 DeepSeek 专家团的并行协作',
+    strategy: 'expert-team',
+    commanderId: 'deepseek',
+    status: 'running',
+    error: null,
+    openedAt: '2026-08-17T13:00:00.000Z',
+    updatedAt: '2026-08-17T13:00:01.000Z',
+    assignments: [
+      {
+        id: 'plan-options', title: '提出任务方案', agentId: 'claude-code', role: 'plan',
+        mode: 'read', dependsOn: [], state: 'running', summary: null, error: null,
+        startedAt: '2026-08-17T13:00:01.000Z', finishedAt: null,
+      },
+      {
+        id: 'review-boundaries', title: '复审实现边界', agentId: 'codex', role: 'review',
+        mode: 'read', dependsOn: [], state: 'running', summary: null, error: null,
+        startedAt: '2026-08-17T13:00:01.000Z', finishedAt: null,
+      },
+      {
+        id: 'synthesize-result', title: '汇总专家结论', agentId: 'deepseek', role: 'synthesize',
+        mode: 'read', dependsOn: ['plan-options', 'review-boundaries'], state: 'pending',
+        summary: null, error: null, startedAt: null, finishedAt: null,
+      },
+    ],
+    progress: { completed: 0, total: 3 },
+    artifacts: [],
+    ...overrides,
+  }
+}
+
 export async function createBrowserHarness() {
   const code = await readFile(new URL('../lib/client.js', import.meta.url), 'utf8')
   let handoff
   const styles = []
+  const intervals = new Map()
+  let nextIntervalId = 0
   vm.runInNewContext(code, {
     window: {
       __ModuleLoader__: {
@@ -82,6 +118,14 @@ export async function createBrowserHarness() {
       head: {
         appendChild(node) { styles.push(node) },
       },
+    },
+    setInterval(callback) {
+      const id = ++nextIntervalId
+      intervals.set(id, callback)
+      return id
+    },
+    clearInterval(id) {
+      intervals.delete(id)
     },
   })
 
@@ -103,11 +147,19 @@ export async function createBrowserHarness() {
   const remoteMounts = []
   const initialRoster = deferred()
   const remoteResponses = [initialRoster.promise]
+  const missionResponses = [{ ok: true, value: null }]
+  const startDemoResponses = []
+  const cancelMissionResponses = []
   const remote = {
     async $mount(contribution) {
       remoteMounts.push(contribution)
       this.agentTeam = {
         snapshot: async () => remoteResponses.shift(),
+        missionSnapshot: async () => (
+          missionResponses.shift() ?? { ok: true, value: null }
+        ),
+        startDemo: async () => startDemoResponses.shift(),
+        cancelMission: async () => cancelMissionResponses.shift(),
       }
       return () => { delete this.agentTeam }
     },
@@ -203,10 +255,17 @@ export async function createBrowserHarness() {
     remote,
     remoteMounts,
     remoteResponses,
+    missionResponses,
+    startDemoResponses,
+    cancelMissionResponses,
     removed,
     settingsBindings,
     settingsWrites,
     styles,
+    activeIntervalCount: () => intervals.size,
+    async tickIntervals() {
+      await Promise.all([...intervals.values()].map(callback => callback()))
+    },
     getSettingsSnapshot: () => settingsSnapshot,
     setSettingsSnapshot(next) { settingsSnapshot = next },
     renderMission: () => {

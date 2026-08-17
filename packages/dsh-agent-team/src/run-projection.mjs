@@ -20,12 +20,14 @@ export function createRunProjectionStore(options = {}) {
         strategy: plan.strategy,
         commanderId: plan.commanderId,
         status: 'planned',
+        error: null,
         openedAt,
         updatedAt: openedAt,
         assignments: plan.assignments.map(assignment => ({
           ...assignment,
           dependsOn: [...assignment.dependsOn],
           summary: null,
+          error: null,
           startedAt: null,
           finishedAt: null,
         })),
@@ -44,7 +46,38 @@ export function createRunProjectionStore(options = {}) {
         return
       }
 
-      if (event.type !== 'assignment.started' && event.type !== 'assignment.completed') {
+      if (event.type === 'mission.completed') {
+        run.status = 'completed'
+        run.updatedAt = event.at
+        return
+      }
+
+      if (event.type === 'mission.cancelled') {
+        run.status = 'cancelled'
+        for (const assignment of run.assignments) {
+          if (assignment.state === 'completed') continue
+          assignment.state = 'cancelled'
+          assignment.finishedAt = event.at
+        }
+        run.updatedAt = event.at
+        return
+      }
+
+      if (event.type === 'mission.failed') {
+        run.status = 'failed'
+        run.error = event.error
+        for (const assignment of run.assignments) {
+          if (assignment.state === 'completed') continue
+          assignment.state = 'failed'
+          assignment.finishedAt = event.at
+        }
+        run.updatedAt = event.at
+        return
+      }
+
+      if (event.type !== 'assignment.started'
+        && event.type !== 'assignment.completed'
+        && event.type !== 'assignment.failed') {
         throw new Error(`unsupported run event: ${event.type}`)
       }
 
@@ -59,6 +92,10 @@ export function createRunProjectionStore(options = {}) {
         assignment.summary = event.summary
         assignment.finishedAt = event.at
         run.artifacts.push(...event.artifacts)
+      } else {
+        assignment.state = 'failed'
+        assignment.error = event.error
+        assignment.finishedAt = event.at
       }
       run.updatedAt = event.at
       run.progress = progressOf(run.assignments)

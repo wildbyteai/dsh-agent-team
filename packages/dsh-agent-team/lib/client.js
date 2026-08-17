@@ -69,21 +69,121 @@
         return { schemaVersion: 1, capturedAt: value.capturedAt, agents }
       }
 
-      const rosterRemoteContribution = {
-        package: PLUGIN_ID,
-        descriptors: [{
-          id: `${PLUGIN_ID}#agentTeam/snapshot`,
+      function nullableString(value) {
+        return value === null || typeof value === 'string'
+      }
+
+      function parseMissionSnapshot(value) {
+        if (value === null) return null
+        const runStatuses = new Set(['planned', 'running', 'completed', 'cancelled', 'failed'])
+        const assignmentStates = new Set([
+          'pending', 'running', 'completed', 'cancelled', 'failed',
+        ])
+        if (value === null || typeof value !== 'object' || Array.isArray(value)
+          || !hasExactKeys(value, [
+            'schemaVersion', 'id', 'goal', 'strategy', 'commanderId', 'status', 'error',
+            'openedAt', 'updatedAt', 'assignments', 'progress', 'artifacts',
+          ])
+          || value.schemaVersion !== 1 || typeof value.id !== 'string'
+          || typeof value.goal !== 'string' || value.strategy !== 'expert-team'
+          || value.commanderId !== 'deepseek' || !runStatuses.has(value.status)
+          || !nullableString(value.error) || typeof value.openedAt !== 'string'
+          || typeof value.updatedAt !== 'string' || !Array.isArray(value.assignments)
+          || value.progress === null || typeof value.progress !== 'object'
+          || Array.isArray(value.progress)
+          || !hasExactKeys(value.progress, ['completed', 'total'])
+          || !Number.isInteger(value.progress.completed) || value.progress.completed < 0
+          || !Number.isInteger(value.progress.total) || value.progress.total < 0
+          || !Array.isArray(value.artifacts)
+          || value.artifacts.some(artifact => typeof artifact !== 'string')) {
+          throw new TypeError('agentTeam mission snapshot has an invalid envelope')
+        }
+        const assignments = value.assignments.map(assignment => {
+          if (assignment === null || typeof assignment !== 'object' || Array.isArray(assignment)
+            || !hasExactKeys(assignment, [
+              'id', 'title', 'agentId', 'role', 'mode', 'dependsOn', 'state', 'summary',
+              'error', 'startedAt', 'finishedAt',
+            ])
+            || typeof assignment.id !== 'string' || typeof assignment.title !== 'string'
+            || typeof assignment.agentId !== 'string' || typeof assignment.role !== 'string'
+            || (assignment.mode !== 'read' && assignment.mode !== 'write')
+            || !Array.isArray(assignment.dependsOn)
+            || assignment.dependsOn.some(dependency => typeof dependency !== 'string')
+            || !assignmentStates.has(assignment.state)
+            || !nullableString(assignment.summary) || !nullableString(assignment.error)
+            || !nullableString(assignment.startedAt) || !nullableString(assignment.finishedAt)) {
+            throw new TypeError('agentTeam mission snapshot contains an invalid assignment')
+          }
+          return {
+            id: assignment.id,
+            title: assignment.title,
+            agentId: assignment.agentId,
+            role: assignment.role,
+            mode: assignment.mode,
+            dependsOn: [...assignment.dependsOn],
+            state: assignment.state,
+            summary: assignment.summary,
+            error: assignment.error,
+            startedAt: assignment.startedAt,
+            finishedAt: assignment.finishedAt,
+          }
+        })
+        return {
+          schemaVersion: 1,
+          id: value.id,
+          goal: value.goal,
+          strategy: 'expert-team',
+          commanderId: 'deepseek',
+          status: value.status,
+          error: value.error,
+          openedAt: value.openedAt,
+          updatedAt: value.updatedAt,
+          assignments,
+          progress: { completed: value.progress.completed, total: value.progress.total },
+          artifacts: [...value.artifacts],
+        }
+      }
+
+      function parseRequiredMissionSnapshot(value) {
+        const snapshot = parseMissionSnapshot(value)
+        if (snapshot === null) {
+          throw new TypeError('agentTeam mission snapshot is required')
+        }
+        return snapshot
+      }
+
+      function remoteDescriptor(method, typeSymbol, schema) {
+        return {
+          id: `${PLUGIN_ID}#agentTeam/${method}`,
           service: 'agentTeam',
           namespace: 'agentTeam',
-          method: 'snapshot',
+          method,
           invocation: { kind: 'direct' },
           parameters: [],
-          result: {
-            mode: 'strict',
-            typeSymbol: 'dsh-agent-team#AgentRosterSnapshot',
-            schema: { parse: parseRosterSnapshot },
-          },
-        }],
+          result: { mode: 'strict', typeSymbol, schema: { parse: schema } },
+        }
+      }
+
+      const agentTeamRemoteContribution = {
+        package: PLUGIN_ID,
+        descriptors: [
+          remoteDescriptor('snapshot', 'dsh-agent-team#AgentRosterSnapshot', parseRosterSnapshot),
+          remoteDescriptor(
+            'missionSnapshot',
+            'dsh-agent-team#MissionRunSnapshotOrNull',
+            parseMissionSnapshot,
+          ),
+          remoteDescriptor(
+            'startDemo',
+            'dsh-agent-team#MissionRunSnapshot',
+            parseRequiredMissionSnapshot,
+          ),
+          remoteDescriptor(
+            'cancelMission',
+            'dsh-agent-team#MissionRunSnapshotOrNull',
+            parseMissionSnapshot,
+          ),
+        ],
       }
 
       function createSnapshotStore(initialSnapshot) {
@@ -138,6 +238,86 @@
             })
             tail = task.catch(() => {})
             return task
+          },
+        }
+      }
+
+      function createMissionController(remote, store) {
+        const terminalStatuses = new Set(['completed', 'cancelled', 'failed'])
+        const staleResponse = Symbol('stale mission response')
+        let pollTimer
+        let requestGeneration = 0
+
+        function stopPolling() {
+          if (pollTimer === undefined) return
+          clearInterval(pollTimer)
+          pollTimer = undefined
+        }
+
+        function publish(run) {
+          store.setSnapshot({ phase: 'ready', run })
+          if (run === null || terminalStatuses.has(run.status)) stopPolling()
+        }
+
+        async function invoke(method) {
+          const generation = ++requestGeneration
+          try {
+            const answered = await remote.agentTeam[method]()
+            if (generation !== requestGeneration) return staleResponse
+            if (answered?.ok !== true) throw new Error(`Host rejected Agent mission ${method}`)
+            const run = parseMissionSnapshot(answered.value)
+            publish(run)
+            return run
+          } catch (error) {
+            if (generation !== requestGeneration) return staleResponse
+            throw error
+          }
+        }
+
+        async function refresh() {
+          try {
+            const run = await invoke('missionSnapshot')
+            if (run === staleResponse) return undefined
+            if (run?.status === 'running' && pollTimer === undefined) startPolling()
+            return run
+          } catch (_error) {
+            store.setSnapshot({ ...store.getSnapshot(), phase: 'error' })
+            return undefined
+          }
+        }
+
+        function startPolling() {
+          stopPolling()
+          pollTimer = setInterval(refresh, 180)
+        }
+
+        return {
+          refresh,
+          async start() {
+            store.setSnapshot({ ...store.getSnapshot(), phase: 'starting' })
+            try {
+              const run = await invoke('startDemo')
+              if (run === staleResponse) return undefined
+              if (run?.status === 'running') startPolling()
+              return run
+            } catch (_error) {
+              store.setSnapshot({ ...store.getSnapshot(), phase: 'error' })
+              return undefined
+            }
+          },
+          async cancel() {
+            stopPolling()
+            try {
+              const run = await invoke('cancelMission')
+              return run === staleResponse ? undefined : run
+            } catch (_error) {
+              store.setSnapshot({ ...store.getSnapshot(), phase: 'error' })
+              return undefined
+            }
+          },
+          dispose() {
+            requestGeneration += 1
+            stopPolling()
           },
         }
       }
@@ -398,6 +578,55 @@
   color: var(--dat-muted);
   line-height: 1.7;
 }
+.dat-action {
+  position: relative;
+  justify-self: start;
+  margin-top: 18px;
+  padding: 10px 14px;
+  border: 1px solid rgba(15, 157, 138, .34);
+  border-radius: 12px;
+  background: rgba(15, 157, 138, .11);
+  color: #087868;
+  cursor: pointer;
+  font: 750 12px/1 ui-monospace, "SFMono-Regular", monospace;
+  transition: transform .18s ease, background .18s ease;
+}
+.dat-action:hover:not(:disabled) { transform: translateY(-1px); background: rgba(15, 157, 138, .16); }
+.dat-action:disabled { cursor: wait; opacity: .55; }
+.dat-action[data-tone="danger"] {
+  border-color: rgba(182, 75, 69, .3);
+  background: rgba(182, 75, 69, .09);
+  color: var(--dat-danger);
+}
+.dat-mission-board {
+  min-height: 310px;
+  padding: 24px;
+  border: 1px solid var(--dat-line);
+  border-radius: 9px 28px 28px 28px;
+  background: var(--dat-panel);
+  box-shadow: 0 15px 36px rgba(28, 41, 51, .07);
+}
+.dat-mission-board h3 { margin: 4px 0 7px; font: 650 24px/1.2 "Iowan Old Style", "Songti SC", serif; }
+.dat-mission-meta { color: var(--dat-muted); font-size: 12px; }
+.dat-progress { margin: 18px 0 12px; color: var(--dat-signal); font: 750 12px/1 ui-monospace, "SFMono-Regular", monospace; }
+.dat-task-grid { display: grid; gap: 9px; }
+.dat-task {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid var(--dat-line);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, .52);
+}
+.dat-task[data-state="running"] { border-color: rgba(15, 157, 138, .4); animation: dat-task-pulse 1.6s ease-in-out infinite; }
+.dat-task[data-state="failed"] { border-color: rgba(182, 75, 69, .4); }
+.dat-task-avatar { font-size: 22px; }
+.dat-task strong { display: block; font-size: 13px; }
+.dat-task p { margin: 4px 0 0; color: var(--dat-muted); font-size: 11px; line-height: 1.45; }
+.dat-task-state { color: var(--dat-muted); font: 700 10px/1 ui-monospace, "SFMono-Regular", monospace; }
+@keyframes dat-task-pulse { 50% { box-shadow: 0 0 0 3px rgba(15, 157, 138, .08); } }
 @keyframes dat-signal {
   0% { box-shadow: 0 0 0 0 rgba(216, 137, 36, .36); }
   72%, 100% { box-shadow: 0 0 0 9px rgba(216, 137, 36, 0); }
@@ -465,11 +694,8 @@
         ],
       }
 
-      const missionSnapshot = {
-        phase: 'idle',
-        commander: { id: 'deepseek', displayName: 'DeepSeek', avatar: '🧑‍✈️' },
-      }
       const rosterStore = createSnapshotStore(rosterSnapshot)
+      const missionStore = createSnapshotStore({ phase: 'awaiting-host', run: null })
 
       function Header(props) {
         return h('header', { className: 'dat-heading' },
@@ -498,6 +724,21 @@
         synthesize: '汇总',
         review: '复审',
         research: '研究',
+      }
+      const missionAgentLabels = {
+        deepseek: { name: 'DeepSeek', avatar: '🧑‍✈️' },
+        'claude-code': { name: 'Claude Code', avatar: '🧑‍💼' },
+        codex: { name: 'Codex', avatar: '🧑‍🔬' },
+        antigravity: { name: 'Antigravity', avatar: '🧑‍🚀' },
+        pi: { name: 'Pi', avatar: '🧑‍🔧' },
+      }
+      const missionStateLabels = {
+        planned: '已计划',
+        pending: '等待',
+        running: '运行中',
+        completed: '已完成',
+        cancelled: '已取消',
+        failed: '失败',
       }
 
       function AgentCard(agent, phase, settingsSnapshot, roleEditor) {
@@ -566,23 +807,81 @@
       }
 
       function MissionCommandView(props) {
+        const snapshot = React.useSyncExternalStore(
+          props.store.subscribe,
+          props.store.getSnapshot,
+          props.store.getSnapshot,
+        )
+        const run = snapshot.run
+        const mode = snapshot.phase === 'error'
+          ? '连接异常'
+          : run === null ? '空闲' : missionStateLabels[run.status]
+        const missionBody = run === null
+          ? h('article', { className: 'dat-mission-empty' },
+            h('h3', null, '等待 DeepSeek 组建专家团'),
+            h('p', null,
+              '先运行一次无模型演示，验证并行分派、依赖交接、状态刷新和取消；不会启动任何真实 Provider。'),
+            h('button', {
+              className: 'dat-action',
+              type: 'button',
+              'data-action': 'start-demo',
+              disabled: snapshot.phase === 'starting',
+              onClick: () => props.controller.start(),
+            }, snapshot.phase === 'starting' ? '正在启动…' : '运行无模型演示'))
+          : h('article', { className: 'dat-mission-board' },
+            h('span', { className: 'dat-kicker' }, 'No-model demo'),
+            h('h3', null, run.goal),
+            h('div', { className: 'dat-mission-meta' },
+              `任务 ${run.id} · ${missionStateLabels[run.status]}`),
+            h('div', { className: 'dat-progress' },
+              `${run.progress.completed} / ${run.progress.total}`),
+            h('div', { className: 'dat-task-grid' }, run.assignments.map(assignment => {
+              const agent = missionAgentLabels[assignment.agentId] ?? {
+                name: assignment.agentId,
+                avatar: '🧑‍💻',
+              }
+              const detail = assignment.error ?? assignment.summary
+                ?? (assignment.dependsOn.length > 0
+                  ? `等待 ${assignment.dependsOn.join(' + ')}`
+                  : `${roleLabels[assignment.role] ?? assignment.role} 节点`)
+              return h('div', {
+                className: 'dat-task',
+                key: assignment.id,
+                'data-state': assignment.state,
+              },
+              h('span', { className: 'dat-task-avatar', 'aria-hidden': 'true' }, agent.avatar),
+              h('div', null,
+                h('strong', null, `${agent.name} · ${assignment.title}`),
+                h('p', null, detail)),
+              h('span', { className: 'dat-task-state' }, missionStateLabels[assignment.state]))
+            })),
+            run.error === null ? null : h('p', { className: 'dat-note' }, run.error),
+            h('button', {
+              className: 'dat-action',
+              type: 'button',
+              'data-action': run.status === 'running' ? 'cancel-demo' : 'start-demo',
+              'data-tone': run.status === 'running' ? 'danger' : 'normal',
+              disabled: snapshot.phase === 'starting',
+              onClick: () => run.status === 'running'
+                ? props.controller.cancel()
+                : props.controller.start(),
+            }, snapshot.phase === 'starting'
+              ? '正在启动…'
+              : run.status === 'running' ? '取消演示' : '再次运行'))
         return h('section', { className: 'dat-shell dat-mission-view' },
           Header({
             kicker: 'Mission command',
             title: '任务指挥台',
             description: 'DeepSeek 负责理解目标、选择专家、分派任务与汇总结论；确定性运行时负责权限和状态。',
-            mode: '空闲',
+            mode,
           }),
           h('div', { className: 'dat-command-deck' },
             h('article', { className: 'dat-commander' },
               h('div', { className: 'dat-commander-avatar', 'aria-hidden': 'true' },
-                props.projection.commander.avatar),
-              h('strong', null, props.projection.commander.displayName),
+                missionAgentLabels.deepseek.avatar),
+              h('strong', null, missionAgentLabels.deepseek.name),
               h('span', null, '专家团指挥 / 结果汇总')),
-            h('article', { className: 'dat-mission-empty' },
-              h('h3', null, '等待 DeepSeek 组建专家团'),
-              h('p', null,
-                '提交任务后，指挥台会展示本次选择的专家、并行任务、依赖关系、交接状态和质量关卡。'))))
+            missionBody))
       }
 
       return {
@@ -590,12 +889,14 @@
         apply(ctx) {
           const roleSettings = ctx.settingsScope.bind({ namespace: AGENT_TEAM_SETTINGS_NAMESPACE })
           const roleEditor = createRoleEditor(roleSettings)
+          const missionController = createMissionController(ctx.remote, missionStore)
           ctx.effect(async () => {
             let disposeRemote
             try {
-              disposeRemote = await ctx.remote.$mount(rosterRemoteContribution)
+              disposeRemote = await ctx.remote.$mount(agentTeamRemoteContribution)
             } catch (_error) {
               rosterStore.setSnapshot({ ...rosterStore.getSnapshot(), phase: 'error' })
+              missionStore.setSnapshot({ ...missionStore.getSnapshot(), phase: 'error' })
               return undefined
             }
 
@@ -615,11 +916,16 @@
                 }
               }
             }
-            const disposeReset = ctx.on('connection/reset', refreshRoster)
-            await refreshRoster()
+            const refreshAll = () => Promise.all([
+              refreshRoster(),
+              missionController.refresh(),
+            ])
+            const disposeReset = ctx.on('connection/reset', refreshAll)
+            await refreshAll()
             return async () => {
               active = false
               disposeReset()
+              missionController.dispose()
               await disposeRemote()
             }
           }, 'dsh-agent-team: remote roster')
@@ -637,7 +943,7 @@
               id: 'agent-team',
               order: 45,
               label: '专家团',
-              inject: () => ({ projection: missionSnapshot }),
+              inject: () => ({ store: missionStore, controller: missionController }),
             }, MissionCommandView))
             return () => {
               disposeMission()

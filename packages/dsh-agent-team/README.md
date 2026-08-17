@@ -2,7 +2,7 @@
 
 DeepSeek Harness 的本地 Agent 专家团插件。DeepSeek 负责理解目标、选择专家、分派任务和汇总结论；确定性 Host 服务负责名单、任务计划校验和 UI 状态投影。
 
-当前是无模型纵向切片，不调用真实 Provider。Host 的 Agent 名册已经通过 Harness Typert Remote API 接到 Browser 面板，角色定位通过官方 user-settings seam 持久化。
+当前是无模型纵向切片，不调用真实 Provider。Host 的 Agent 名册和 MissionRun 投影已经通过 Harness Typert Remote API 接到 Browser 面板，角色定位通过官方 user-settings seam 持久化。
 
 ## 当前能力
 
@@ -10,8 +10,9 @@ DeepSeek Harness 的本地 Agent 专家团插件。DeepSeek 负责理解目标�
 - `MissionPlan`：接受 DeepSeek 或用户提出的任务分派图，允许并行专家会诊，不强制固定流水线。
 - 分派门禁：拒绝未发现的 Agent、定位不匹配的角色，以及分配给 blocked Agent 的写任务。
 - `RunProjection`：把任务事件归并成 Browser 可消费的不可变快照。
-- Host：通过 `ctx.provide('agentTeam', service)` 提供上述三个 public seam，并导出严格校验的 `agentTeam/snapshot` Remote 入口。
-- Browser：注册 `settings.section` 和 `conversation.view`；专家名册显示 Host 返回的安装状态与可执行路径，并在 `connection/reset` 后刷新。
+- `MissionRun`：运行一条无模型只读专家团演示，Claude Code 与 Codex 并行，DeepSeek 在依赖完成后汇总；支持 completed/cancelled/failed 终态。
+- Host：通过 `ctx.provide('agentTeam', service)` 提供上述 public seam，并导出严格校验的 AgentRoster/MissionRun Remote 入口。
+- Browser：注册 `settings.section` 和 `conversation.view`；专家名册显示 Host 返回的安装状态，任务指挥台可启动、跟踪和取消无模型演示。
 - 角色设置：在 Agent 卡片中编辑规划、执行、复审、研究定位；DeepSeek 固定保留指挥与汇总，修改保存到 `agent-team.roleOverrides`。
 - UI：使用 Emoji 专家头像和轻量状态动效，并支持 `prefers-reduced-motion`。
 
@@ -20,7 +21,8 @@ DeepSeek Harness 的本地 Agent 专家团插件。DeepSeek 负责理解目标�
 - 当前只编辑角色定位；尚未提供 Agent 启用/禁用、团队模板、头像或 Provider 选择。
 - 尚未探测版本、鉴权、冲突安装或 Provider Adapter 状态。
 - 尚未启动 Subagent、Workflow、CLI 或真实模型。
-- `RunProjection` 当前为进程内存态；持久任务账本属于下一切片。
+- `MissionRun` 只使用内置假执行器，不代表 Claude Code/Codex Provider 已接入。
+- `RunProjection` 当前为进程内存态；Host 重启后的持久恢复属于后续切片。
 
 ## 目录
 
@@ -31,6 +33,7 @@ src/agent-role-policy.mjs Agent 角色、指挥边界与默认定位
 src/agent-roster.mjs    专家名单与 PATH 发现
 src/agent-team-settings.mjs 角色设置 schema 与指挥边界
 src/mission-plan.mjs    专家任务分派校验
+src/mission-run.mjs     无模型任务调度与取消
 src/run-projection.mjs  UI 状态投影
 lib/client.js           零构建依赖的 Browser client artifact
 tests/                  public seam 行为测试

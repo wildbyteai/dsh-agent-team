@@ -5,6 +5,7 @@ import {
   resolveRoleOverrides,
 } from './agent-team-settings.mjs'
 import { createMissionPlan } from './mission-plan.mjs'
+import { createMissionRunService } from './mission-run.mjs'
 import { createRunProjectionStore } from './run-projection.mjs'
 
 export const name = 'dsh-agent-team'
@@ -15,11 +16,17 @@ export function apply(ctx, config = {}) {
   const roster = createAgentRoster({
     getRoleOverrides: () => roleOverrides,
   })
+  const runs = createRunProjectionStore()
+  const missions = createMissionRunService({ projections: runs })
   const service = {
     roster,
     snapshot: () => roster.snapshot(),
     createMissionPlan,
-    runs: createRunProjectionStore(),
+    runs,
+    missions,
+    missionSnapshot: () => missions.snapshot() ?? null,
+    startDemo: () => missions.startDemo(),
+    cancelMission: () => missions.cancel() ?? null,
   }
   service.typertRemote = Object.freeze({
     service,

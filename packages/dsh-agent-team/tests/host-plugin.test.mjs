@@ -28,6 +28,12 @@ test('Host plugin publishes the expert-team service without starting providers',
   assert.equal(typeof service.runs.open, 'function')
   assert.equal(typeof service.runs.record, 'function')
   assert.equal(typeof service.runs.snapshot, 'function')
+  assert.equal(typeof service.missions.startDemo, 'function')
+  assert.equal(typeof service.missions.cancel, 'function')
+  assert.equal(typeof service.missionSnapshot, 'function')
+  assert.equal(typeof service.startDemo, 'function')
+  assert.equal(typeof service.cancelMission, 'function')
+  assert.equal(service.missionSnapshot(), null)
 
   const snapshot = await service.snapshot()
   assert.equal(snapshot.agents.length, 5)

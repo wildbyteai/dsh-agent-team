@@ -1,6 +1,6 @@
 {
   "name": "dsh-agent-team",
-  "version": "0.1.0-dev.2",
+  "version": "0.1.0-dev.3",
   "description": "Local expert-team orchestration plugin for DeepSeek Harness",
   "private": true,
   "type": "module",
@@ -12,6 +12,7 @@
     "./agent-roster": "./src/agent-roster.mjs",
     "./agent-team-settings": "./src/agent-team-settings.mjs",
     "./mission-plan": "./src/mission-plan.mjs",
+    "./mission-run": "./src/mission-run.mjs",
     "./run-projection": "./src/run-projection.mjs",
     "./package.json": "./package.json"
   },
@@ -23,7 +24,7 @@
   ],
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "check": "node --check src/agent-role-policy.mjs && node --check src/agent-roster.mjs && node --check src/agent-team-settings.mjs && node --check src/mission-plan.mjs && node --check src/run-projection.mjs && node --check src/index.mjs && node --check lib/client.js && node --check lib/typert.host.js"
+    "check": "node --check src/agent-role-policy.mjs && node --check src/agent-roster.mjs && node --check src/agent-team-settings.mjs && node --check src/mission-plan.mjs && node --check src/mission-run.mjs && node --check src/run-projection.mjs && node --check src/index.mjs && node --check lib/client.js && node --check lib/typert.host.js"
   },
   "dsh": {
     "bundle": {
