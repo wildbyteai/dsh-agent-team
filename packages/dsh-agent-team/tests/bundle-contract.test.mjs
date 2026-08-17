@@ -9,6 +9,9 @@ test('package exposes one static DSH bundle with Host and Browser halves', async
   assert.equal(manifest.name, 'dsh-agent-team')
   assert.equal(manifest.main, './src/index.mjs')
   assert.equal(manifest.exports['./client'], './lib/client.js')
+  assert.equal(manifest.exports['./typert'], './lib/typert.host.js')
+  assert.equal(manifest.dependencies.zod, '4.4.3')
+  assert.ok(manifest.files.includes('lib/typert.host.js'))
   assert.deepEqual(manifest.dsh, {
     bundle: { patch: './cordis.patch.yml' },
     client: {

@@ -7,6 +7,73 @@
       const React = require('react')
       const h = React.createElement
 
+      function parseRosterSnapshot(value) {
+        const availability = new Set(['ready', 'detected', 'missing'])
+        const supportLevels = new Set(['core', 'candidate', 'blocked', 'experimental'])
+        if (value === null || typeof value !== 'object' || Array.isArray(value)
+          || value.schemaVersion !== 1 || typeof value.capturedAt !== 'string'
+          || !Array.isArray(value.agents)) {
+          throw new TypeError('agentTeam snapshot has an invalid envelope')
+        }
+        const agents = value.agents.map(agent => {
+          if (agent === null || typeof agent !== 'object' || Array.isArray(agent)
+            || typeof agent.id !== 'string' || typeof agent.displayName !== 'string'
+            || typeof agent.avatar !== 'string'
+            || (agent.command !== null && typeof agent.command !== 'string')
+            || !availability.has(agent.availability)
+            || (agent.executablePath !== null && typeof agent.executablePath !== 'string')
+            || !supportLevels.has(agent.supportLevel)
+            || !Array.isArray(agent.positioning)
+            || agent.positioning.some(role => typeof role !== 'string')) {
+            throw new TypeError('agentTeam snapshot contains an invalid agent')
+          }
+          return {
+            id: agent.id,
+            displayName: agent.displayName,
+            avatar: agent.avatar,
+            command: agent.command,
+            availability: agent.availability,
+            executablePath: agent.executablePath,
+            supportLevel: agent.supportLevel,
+            positioning: [...agent.positioning],
+          }
+        })
+        return { schemaVersion: 1, capturedAt: value.capturedAt, agents }
+      }
+
+      const rosterRemoteContribution = {
+        package: PLUGIN_ID,
+        descriptors: [{
+          id: `${PLUGIN_ID}#agentTeam/snapshot`,
+          service: 'agentTeam',
+          namespace: 'agentTeam',
+          method: 'snapshot',
+          invocation: { kind: 'direct' },
+          parameters: [],
+          result: {
+            mode: 'strict',
+            typeSymbol: 'dsh-agent-team#AgentRosterSnapshot',
+            schema: { parse: parseRosterSnapshot },
+          },
+        }],
+      }
+
+      function createSnapshotStore(initialSnapshot) {
+        let snapshot = initialSnapshot
+        const listeners = new Set()
+        return {
+          getSnapshot: () => snapshot,
+          subscribe(listener) {
+            listeners.add(listener)
+            return () => { listeners.delete(listener) }
+          },
+          setSnapshot(nextSnapshot) {
+            snapshot = nextSnapshot
+            for (const listener of [...listeners]) listener()
+          },
+        }
+      }
+
       if (typeof document !== 'undefined'
         && document.querySelector?.(`style[data-plugin="${PLUGIN_ID}"]`) == null) {
         const style = document.createElement('style')
@@ -322,6 +389,7 @@
         phase: 'idle',
         commander: { id: 'deepseek', displayName: 'DeepSeek', avatar: '🧑‍✈️' },
       }
+      const rosterStore = createSnapshotStore(rosterSnapshot)
 
       function Header(props) {
         return h('header', { className: 'dat-heading' },
@@ -332,7 +400,27 @@
           h('span', { className: 'dat-mode' }, props.mode))
       }
 
-      function AgentCard(agent) {
+      function availabilityText(agent, phase) {
+        if (phase === 'scanning') return '正在扫描…'
+        if (phase === 'error') return '扫描失败'
+        if (agent.availability === 'ready') return '内置可用'
+        if (agent.availability === 'detected') {
+          return agent.executablePath === null ? '已检测' : `已检测 · ${agent.executablePath}`
+        }
+        if (agent.availability === 'missing') return '未安装'
+        return '等待主机扫描'
+      }
+
+      const roleLabels = {
+        coordinate: '指挥',
+        plan: '规划',
+        execute: '执行',
+        synthesize: '汇总',
+        review: '复审',
+        research: '研究',
+      }
+
+      function AgentCard(agent, phase) {
         return h('article', { className: 'dat-agent', key: agent.id },
           h('span', {
             className: 'dat-support',
@@ -340,20 +428,25 @@
           }, agent.supportLevel),
           h('div', { className: 'dat-avatar', 'aria-hidden': 'true' }, agent.avatar),
           h('h3', { className: 'dat-agent-name' }, agent.displayName),
-          h('p', { className: 'dat-agent-status' }, '等待主机扫描'),
+          h('p', { className: 'dat-agent-status' }, availabilityText(agent, phase)),
           h('div', { className: 'dat-roles' },
-            agent.positioning.map(role => h('span', { className: 'dat-role', key: role }, role))))
+            agent.positioning.map(role => h('span', { className: 'dat-role', key: role }, roleLabels[role] ?? role))))
       }
 
       function AgentRosterView(props) {
+        const snapshot = React.useSyncExternalStore(
+          props.store.subscribe,
+          props.store.getSnapshot,
+          props.store.getSnapshot,
+        )
         return h('section', { className: 'dat-shell dat-roster-view' },
           Header({
             kicker: 'Expert roster',
             title: '专家名册',
-            description: 'DeepSeek 按任务需要组建专家团。这里展示默认定位；后续切片接入主机扫描与用户自定义。',
-            mode: '只读切片',
+            description: 'DeepSeek 按任务需要组建专家团。安装状态来自主机只读扫描，定位来自当前团队配置。',
+            mode: snapshot.phase === 'ready' ? '主机已同步' : '只读扫描',
           }),
-          h('div', { className: 'dat-grid' }, props.snapshot.agents.map(AgentCard)),
+          h('div', { className: 'dat-grid' }, snapshot.agents.map(agent => AgentCard(agent, snapshot.phase))),
           h('p', { className: 'dat-note' },
             '安装状态与支持等级相互独立：已检测到的 Agent 仍可能因为版本、权限或沙箱条件而被限制。'))
       }
@@ -379,15 +472,45 @@
       }
 
       return {
-        inject: ['slots'],
+        inject: ['slots', 'remote', 'connection'],
         apply(ctx) {
+          ctx.effect(async () => {
+            let disposeRemote
+            try {
+              disposeRemote = await ctx.remote.$mount(rosterRemoteContribution)
+            } catch (_error) {
+              rosterStore.setSnapshot({ ...rosterStore.getSnapshot(), phase: 'error' })
+              return undefined
+            }
+
+            let active = true
+            const refreshRoster = async () => {
+              rosterStore.setSnapshot({ ...rosterStore.getSnapshot(), phase: 'scanning' })
+              try {
+                const answered = await ctx.remote.agentTeam.snapshot()
+                if (!active) return
+                if (answered?.ok !== true) throw new Error('Host rejected Agent roster snapshot')
+                rosterStore.setSnapshot({ phase: 'ready', ...parseRosterSnapshot(answered.value) })
+              } catch (_error) {
+                if (active) rosterStore.setSnapshot({ ...rosterStore.getSnapshot(), phase: 'error' })
+              }
+            }
+            const disposeReset = ctx.on('connection/reset', refreshRoster)
+            await refreshRoster()
+            return async () => {
+              active = false
+              disposeReset()
+              await disposeRemote()
+            }
+          }, 'dsh-agent-team: remote roster')
+
           ctx.effect(() => {
             const disposeSettings = ctx.slots.inject('settings.section', () => ctx.slots.register({
               name: 'settings.section',
               id: 'agent-team',
               order: 45,
               label: '专家团',
-              inject: () => ({ snapshot: rosterSnapshot }),
+              inject: () => ({ store: rosterStore }),
             }, AgentRosterView))
             const disposeMission = ctx.slots.inject('conversation.view', () => ctx.slots.register({
               name: 'conversation.view',

@@ -1,5 +1,7 @@
 # Agent 专家团插件首个无模型切片
 
+> 后续状态：同日已完成 Host→Browser AgentRoster Remote 连接；本文件保留首个未连接切片的原始验收记录，后续结果见 `agent-team-remote-roster-2026-08-17.md`。
+
 - 实施日期：2026-08-17
 - 包路径：`packages/dsh-agent-team`
 - Harness 基线：`deepseek-ai/deepseek-harness@47f943859bef60e4160492346772ded9b24f765a`
@@ -62,7 +64,7 @@ Host 插入唯一的 `dsh-agent-team` 行并提供 `ctx.agentTeam` 服务。Brow
 - `settings.section / agent-team`：专家名册。
 - `conversation.view / agent-team`：任务指挥台。
 
-当前 Browser 尚未接 Host Remote Snapshot，因此展示五位专家及“等待主机扫描”，不伪造本机安装结果。
+本切片完成时 Browser 尚未接 Host Remote Snapshot，因此展示五位专家及“等待主机扫描”，不伪造本机安装结果。该限制已在后续 Remote Roster 切片解除。
 
 ## UI 方向
 

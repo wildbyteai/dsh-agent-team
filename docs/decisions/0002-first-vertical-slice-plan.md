@@ -1,6 +1,6 @@
 # ADR-0002：首条纵向闭环实施计划
 
-- 状态：首个正式无模型专家团切片已实现；Host/Browser 状态连接、任务账本和 Adapter 待完成
+- 状态：无模型专家团切片与 Host→Browser Agent 名册连接已实现；任务运行投影连接、任务账本和 Adapter 待完成
 - 日期：2026-08-17
 - 目标：在不做后台孤岛原型的前提下，交付一条可见、可运行、可验证的端到端闭环
 
@@ -18,7 +18,7 @@
 
 核心本机运行证据已经补齐：UI Slot、Settings、Conversation View、Workflow、Session 持久化/检查点、Subprocess、Host 退出时普通/PTY 进程树清理、Bundle/Profile 安装与生命周期、Browser 模块加载均通过官方测试。详见 `docs/tracking/gate-0-local-runtime-validation-2026-08-17.md`。
 
-Gate 0 的正式最小 Host + Browser Bundle 已在 `packages/dsh-agent-team` 实现，并在临时 Profile 完成安装、Host 启动和 Browser Module Registry 冒烟。当前 Browser 仍使用诚实的未连接快照；尚未实现 Host Remote Snapshot、持久任务账本、假 CLI Adapter 和真实 Provider 回归。
+Gate 0 的正式最小 Host + Browser Bundle 已在 `packages/dsh-agent-team` 实现，并在临时 Profile 完成安装、Host 启动和 Browser Module Registry 冒烟。Agent 名册已经通过严格 Typert Remote Snapshot 接到 Browser，并在连接重置后重新扫描；任务运行投影、持久任务账本、假 CLI Adapter 和真实 Provider 回归仍未实现。
 
 完成以下核验后才能创建正式插件脚手架：
 

@@ -1,6 +1,6 @@
 {
   "name": "dsh-agent-team",
-  "version": "0.1.0-dev.0",
+  "version": "0.1.0-dev.1",
   "description": "Local expert-team orchestration plugin for DeepSeek Harness",
   "private": true,
   "type": "module",
@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.mjs",
     "./client": "./lib/client.js",
+    "./typert": "./lib/typert.host.js",
     "./agent-roster": "./src/agent-roster.mjs",
     "./mission-plan": "./src/mission-plan.mjs",
     "./run-projection": "./src/run-projection.mjs",
@@ -16,11 +17,12 @@
   "files": [
     "cordis.patch.yml",
     "src/**/*.mjs",
-    "lib/client.js"
+    "lib/client.js",
+    "lib/typert.host.js"
   ],
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "check": "node --check src/agent-roster.mjs && node --check src/mission-plan.mjs && node --check src/run-projection.mjs && node --check src/index.mjs && node --check lib/client.js"
+    "check": "node --check src/agent-roster.mjs && node --check src/mission-plan.mjs && node --check src/run-projection.mjs && node --check src/index.mjs && node --check lib/client.js && node --check lib/typert.host.js"
   },
   "dsh": {
     "bundle": {
@@ -34,6 +36,9 @@
       ],
       "platform": "web"
     }
+  },
+  "dependencies": {
+    "zod": "4.4.3"
   },
   "license": "UNLICENSED"
 }

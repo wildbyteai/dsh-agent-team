@@ -2,7 +2,7 @@
 
 DeepSeek Harness 的本地 Agent 专家团插件。DeepSeek 负责理解目标、选择专家、分派任务和汇总结论；确定性 Host 服务负责名单、任务计划校验和 UI 状态投影。
 
-当前是第一个无模型纵向切片，不调用真实 Provider。
+当前是无模型纵向切片，不调用真实 Provider。Host 的只读 Agent 名册已经通过 Harness Typert Remote API 接到 Browser 面板。
 
 ## 当前能力
 
@@ -10,13 +10,12 @@ DeepSeek Harness 的本地 Agent 专家团插件。DeepSeek 负责理解目标�
 - `MissionPlan`：接受 DeepSeek 或用户提出的任务分派图，允许并行专家会诊，不强制固定流水线。
 - 分派门禁：拒绝未发现的 Agent、定位不匹配的角色，以及分配给 blocked Agent 的写任务。
 - `RunProjection`：把任务事件归并成 Browser 可消费的不可变快照。
-- Host：通过 `ctx.provide('agentTeam', service)` 提供上述三个 public seam。
-- Browser：注册 `settings.section` 和 `conversation.view`，显示专家名册和任务指挥台。
+- Host：通过 `ctx.provide('agentTeam', service)` 提供上述三个 public seam，并导出严格校验的 `agentTeam/snapshot` Remote 入口。
+- Browser：注册 `settings.section` 和 `conversation.view`；专家名册显示 Host 返回的安装状态与可执行路径，并在 `connection/reset` 后刷新。
 - UI：使用 Emoji 专家头像和轻量状态动效，并支持 `prefers-reduced-motion`。
 
 ## 当前限制
 
-- Browser 尚未通过 Remote Snapshot 连接 Host，因此面板诚实显示“等待主机扫描”。
 - 角色覆盖可通过 Host 配置传入，但还没有可保存的 UI 编辑器。
 - 尚未探测版本、鉴权、冲突安装或 Provider Adapter 状态。
 - 尚未启动 Subagent、Workflow、CLI 或真实模型。
@@ -38,6 +37,7 @@ tests/                  public seam 行为测试
 
 ```bash
 cd packages/dsh-agent-team
+npm install
 npm test
 npm run check
 ```
