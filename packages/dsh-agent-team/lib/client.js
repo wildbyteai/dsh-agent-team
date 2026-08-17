@@ -7,8 +7,22 @@
       const React = require('react')
       const h = React.createElement
       const AGENT_TEAM_SETTINGS_NAMESPACE = 'agent-team'
-      const agentRoleIds = ['coordinate', 'plan', 'execute', 'review', 'research', 'synthesize']
-      const editableAgentRoleIds = ['plan', 'execute', 'review', 'research']
+      // Keep this self-contained Browser artifact aligned with Host policy via the bundle contract test.
+      const agentRolePolicy = Object.freeze({
+        commanderAgentId: 'deepseek',
+        roleIds: Object.freeze([
+          'coordinate', 'plan', 'execute', 'review', 'research', 'synthesize',
+        ]),
+        editableRoleIds: Object.freeze(['plan', 'execute', 'review', 'research']),
+        commanderRoleIds: Object.freeze(['coordinate', 'synthesize']),
+        defaultPositioning: Object.freeze({
+          deepseek: Object.freeze(['coordinate', 'plan', 'execute', 'synthesize']),
+          'claude-code': Object.freeze(['plan', 'review']),
+          codex: Object.freeze(['execute', 'review']),
+          antigravity: Object.freeze(['execute']),
+          pi: Object.freeze(['research', 'execute']),
+        }),
+      })
 
       function hasExactKeys(value, expectedKeys) {
         const actualKeys = Object.keys(value)
@@ -107,14 +121,17 @@
             const task = tail.then(async () => {
               const snapshot = settings.getSnapshot()
               if (snapshot.status !== 'ready' || snapshot.writable !== true
-                || !editableAgentRoleIds.includes(role)) return
+                || !agentRolePolicy.editableRoleIds.includes(role)) return
               const current = positioningOf(agent, snapshot)
-              const selected = new Set(current.filter(candidate => editableAgentRoleIds.includes(candidate)))
+              const selected = new Set(current.filter(candidate => (
+                agentRolePolicy.editableRoleIds.includes(candidate)
+              )))
               if (selected.has(role)) selected.delete(role)
               else selected.add(role)
-              if (agent.id !== 'deepseek' && selected.size === 0) return
-              const nextRoles = agentRoleIds.filter(candidate => (
-                agent.id === 'deepseek' && (candidate === 'coordinate' || candidate === 'synthesize')
+              if (agent.id !== agentRolePolicy.commanderAgentId && selected.size === 0) return
+              const nextRoles = agentRolePolicy.roleIds.filter(candidate => (
+                agent.id === agentRolePolicy.commanderAgentId
+                  && agentRolePolicy.commanderRoleIds.includes(candidate)
               ) || selected.has(candidate))
               const nextOverrides = { ...roleOverridesOf(snapshot), [agent.id]: nextRoles }
               await settings.set('roleOverrides', nextOverrides)
@@ -427,23 +444,23 @@
         agents: [
           {
             id: 'deepseek', displayName: 'DeepSeek', avatar: '🧑‍✈️', supportLevel: 'core',
-            positioning: ['指挥', '规划', '执行', '汇总'],
+            positioning: agentRolePolicy.defaultPositioning.deepseek,
           },
           {
             id: 'claude-code', displayName: 'Claude Code', avatar: '🧑‍💼', supportLevel: 'candidate',
-            positioning: ['规划', '复审'],
+            positioning: agentRolePolicy.defaultPositioning['claude-code'],
           },
           {
             id: 'codex', displayName: 'Codex', avatar: '🧑‍🔬', supportLevel: 'candidate',
-            positioning: ['执行', '复审'],
+            positioning: agentRolePolicy.defaultPositioning.codex,
           },
           {
             id: 'antigravity', displayName: 'Antigravity', avatar: '🧑‍🚀', supportLevel: 'blocked',
-            positioning: ['执行'],
+            positioning: agentRolePolicy.defaultPositioning.antigravity,
           },
           {
             id: 'pi', displayName: 'Pi', avatar: '🧑‍🔧', supportLevel: 'experimental',
-            positioning: ['研究', '执行'],
+            positioning: agentRolePolicy.defaultPositioning.pi,
           },
         ],
       }
@@ -485,10 +502,12 @@
 
       function AgentCard(agent, phase, settingsSnapshot, roleEditor) {
         const positioning = positioningOf(agent, settingsSnapshot)
-        const selectedEditable = positioning.filter(role => editableAgentRoleIds.includes(role))
+        const selectedEditable = positioning.filter(role => (
+          agentRolePolicy.editableRoleIds.includes(role)
+        ))
         const settingsWritable = settingsSnapshot.status === 'ready' && settingsSnapshot.writable === true
-        const fixedRoles = agent.id === 'deepseek'
-          ? positioning.filter(role => role === 'coordinate' || role === 'synthesize')
+        const fixedRoles = agent.id === agentRolePolicy.commanderAgentId
+          ? positioning.filter(role => agentRolePolicy.commanderRoleIds.includes(role))
           : []
         return h('article', { className: 'dat-agent', key: agent.id },
           h('span', {
@@ -499,8 +518,13 @@
           h('h3', { className: 'dat-agent-name' }, agent.displayName),
           h('p', { className: 'dat-agent-status' }, availabilityText(agent, phase)),
           h('div', { className: 'dat-roles' },
-            fixedRoles.map(role => h('span', { className: 'dat-role', key: role }, roleLabels[role] ?? role)),
-            editableAgentRoleIds.map(role => h('button', {
+            fixedRoles.map(role => h('span', {
+              className: 'dat-role',
+              key: role,
+              'data-agent-id': agent.id,
+              'data-role': role,
+            }, roleLabels[role] ?? role)),
+            agentRolePolicy.editableRoleIds.map(role => h('button', {
               className: 'dat-role dat-role-toggle',
               key: role,
               type: 'button',
@@ -508,7 +532,8 @@
               'data-role': role,
               'aria-pressed': selectedEditable.includes(role),
               disabled: !settingsWritable
-                || (agent.id !== 'deepseek' && selectedEditable.length === 1 && selectedEditable.includes(role)),
+                || (agent.id !== agentRolePolicy.commanderAgentId
+                  && selectedEditable.length === 1 && selectedEditable.includes(role)),
               onClick: () => roleEditor.toggle(agent, role),
             }, roleLabels[role] ?? role))))
       }

@@ -1,8 +1,13 @@
+import { COMMANDER_AGENT_ID } from './agent-role-policy.mjs'
+
 /** Build the runtime-owned mission plan from a proposed expert assignment graph. */
 export function createMissionPlan(input) {
   const agents = new Map(input.roster.agents.map(agent => [agent.id, agent]))
   const commander = agents.get(input.commanderId)
   if (commander === undefined) throw new Error(`unknown commander: ${input.commanderId}`)
+  if (input.commanderId !== COMMANDER_AGENT_ID) {
+    throw new Error('DeepSeek must remain the expert-team commander')
+  }
 
   const assignments = input.assignments.map(assignment => {
     const agent = agents.get(assignment.agentId)

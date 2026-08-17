@@ -27,6 +27,7 @@ DeepSeek Harness 的本地 Agent 专家团插件。DeepSeek 负责理解目标�
 ```text
 cordis.patch.yml        静态 DSH Bundle 层
 src/index.mjs           Host 插件入口
+src/agent-role-policy.mjs Agent 角色、指挥边界与默认定位
 src/agent-roster.mjs    专家名单与 PATH 发现
 src/agent-team-settings.mjs 角色设置 schema 与指挥边界
 src/mission-plan.mjs    专家任务分派校验

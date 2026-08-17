@@ -1,17 +1,20 @@
-import z from '@deepseek-ai/schemastery'
+import Schema from '@deepseek-ai/schemastery'
 import { AGENT_IDS } from './agent-roster.mjs'
+import {
+  AGENT_ROLE_IDS,
+  COMMANDER_AGENT_ID,
+  COMMANDER_ROLE_IDS,
+  EDITABLE_AGENT_ROLE_IDS,
+} from './agent-role-policy.mjs'
 
 export const AGENT_TEAM_SETTINGS_NAMESPACE = 'agent-team'
-export const AGENT_ROLE_IDS = Object.freeze([
-  'coordinate', 'plan', 'execute', 'review', 'research', 'synthesize',
-])
-export const EDITABLE_AGENT_ROLE_IDS = Object.freeze(['plan', 'execute', 'review', 'research'])
+export { AGENT_ROLE_IDS, EDITABLE_AGENT_ROLE_IDS }
 
 const roleSet = new Set(AGENT_ROLE_IDS)
 const agentSet = new Set(AGENT_IDS)
 
-export const AgentTeamSettingsSchema = z.object({
-  roleOverrides: z.dict(z.array(z.union([...AGENT_ROLE_IDS])).min(1)).default({}),
+export const AgentTeamSettingsSchema = Schema.object({
+  roleOverrides: Schema.dict(Schema.array(Schema.union([...AGENT_ROLE_IDS])).min(1)).default({}),
 })
 
 function isPlainObject(value) {
@@ -35,11 +38,11 @@ export function resolveRoleOverrides(value) {
     if (new Set(roles).size !== roles.length) {
       throw new TypeError(`Agent ${agentId} has duplicate roles`)
     }
-    if (agentId === 'deepseek') {
-      if (!roles.includes('coordinate') || !roles.includes('synthesize')) {
+    if (agentId === COMMANDER_AGENT_ID) {
+      if (COMMANDER_ROLE_IDS.some(role => !roles.includes(role))) {
         throw new TypeError('DeepSeek must keep coordinate and synthesize roles')
       }
-    } else if (roles.includes('coordinate') || roles.includes('synthesize')) {
+    } else if (COMMANDER_ROLE_IDS.some(role => roles.includes(role))) {
       throw new TypeError(`Agent ${agentId} cannot replace DeepSeek as commander`)
     }
     const ordered = AGENT_ROLE_IDS.filter(role => roles.includes(role))

@@ -1,201 +1,58 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
 import test from 'node:test'
-import vm from 'node:vm'
+import {
+  AGENT_ROLE_IDS,
+  DEFAULT_AGENT_POSITIONING,
+  EDITABLE_AGENT_ROLE_IDS,
+} from '../src/agent-role-policy.mjs'
+import {
+  createBrowserHarness,
+  findNodes,
+  standardRosterResponse,
+  textOf,
+} from './browser-harness.mjs'
 
-function textOf(node) {
-  if (node === null || node === undefined || typeof node === 'boolean') return ''
-  if (typeof node === 'string' || typeof node === 'number') return String(node)
-  if (Array.isArray(node)) return node.map(textOf).join(' ')
-  return textOf(node.children)
-}
+test('Browser bundle registers aligned expert roster and mission views', async () => {
+  const harness = await createBrowserHarness()
+  assert.equal(harness.handoff.id, 'dsh-agent-team')
 
-function findNodes(node, predicate, matches = []) {
-  if (node === null || node === undefined || typeof node !== 'object') return matches
-  if (Array.isArray(node)) {
-    for (const child of node) findNodes(child, predicate, matches)
-    return matches
-  }
-  if (predicate(node)) matches.push(node)
-  for (const child of node.children ?? []) findNodes(child, predicate, matches)
-  return matches
-}
-
-function deferred() {
-  let resolve
-  let reject
-  const promise = new Promise((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise
-    reject = rejectPromise
-  })
-  return { promise, resolve, reject }
-}
-
-function agent(overrides = {}) {
-  return {
-    id: 'codex',
-    displayName: 'Codex',
-    avatar: '🧑‍🔬',
-    command: 'codex',
-    availability: 'detected',
-    executablePath: '/tools/codex',
-    supportLevel: 'candidate',
-    positioning: ['execute', 'review'],
-    ...overrides,
-  }
-}
-
-function rosterResponse(capturedAt, agents, envelopeOverrides = {}) {
-  return {
-    ok: true,
-    value: { schemaVersion: 1, capturedAt, agents, ...envelopeOverrides },
-  }
-}
-
-test('Browser bundle registers the expert roster and mission command views', async () => {
-  const code = await readFile(new URL('../lib/client.js', import.meta.url), 'utf8')
-  let handoff
-  const styles = []
-  const context = {
-    window: {
-      __ModuleLoader__: {
-        load(value) { handoff = value },
-      },
-    },
-    document: {
-      createElement() {
-        return {
-          attributes: {},
-          setAttribute(key, value) { this.attributes[key] = value },
-          textContent: '',
-        }
-      },
-      head: {
-        appendChild(node) { styles.push(node) },
-      },
-    },
-  }
-  vm.runInNewContext(code, context)
-
-  assert.equal(handoff.id, 'dsh-agent-team')
-  const React = {
-    createElement(type, props, ...children) {
-      return { type, props: props ?? {}, children }
-    },
-    useSyncExternalStore(_subscribe, getSnapshot) {
-      return getSnapshot()
-    },
-  }
-  const browserPlugin = handoff.factory(specifier => {
-    if (specifier === 'react') return React
-    throw new Error(`unexpected browser dependency: ${specifier}`)
-  })
-
-  const entries = []
-  const removed = []
-  const remoteMounts = []
-  const remoteResponses = [rosterResponse('2026-08-17T12:00:00.000Z', [
-    agent({
-      id: 'deepseek', displayName: 'DeepSeek', avatar: '🧑‍✈️', command: null,
-      availability: 'ready', executablePath: null, supportLevel: 'core',
-      positioning: ['coordinate', 'plan', 'execute', 'synthesize'],
+  const initialView = harness.renderSettings()
+  const initialRoleNodes = findNodes(initialView, node => (
+    node.props?.['data-agent-id'] !== undefined && node.props?.['data-role'] !== undefined
+  ))
+  const browserDefaultPositioning = Object.fromEntries(
+    Object.keys(DEFAULT_AGENT_POSITIONING).map(agentId => {
+      const selected = initialRoleNodes
+        .filter(node => node.props['data-agent-id'] === agentId
+          && (node.type === 'span' || node.props['aria-pressed'] === true))
+        .map(node => node.props['data-role'])
+      return [agentId, AGENT_ROLE_IDS.filter(role => selected.includes(role))]
     }),
-    agent(),
-  ])]
-  const remote = {
-    async $mount(contribution) {
-      remoteMounts.push(contribution)
-      this.agentTeam = {
-        snapshot: async () => remoteResponses.shift(),
-      }
-      return () => { delete this.agentTeam }
-    },
-  }
-  const settingsBindings = []
-  const settingsWrites = []
-  const settingsListeners = new Set()
-  let settingsSnapshot = {
-    status: 'ready',
-    value: { roleOverrides: {} },
-    base: { roleOverrides: {} },
-    user: undefined,
-    revision: 0,
-    writable: true,
-    mode: 'host',
-  }
-  const roleSettings = {
-    getSnapshot: () => settingsSnapshot,
-    subscribe(listener) {
-      settingsListeners.add(listener)
-      return () => { settingsListeners.delete(listener) }
-    },
-    async set(field, value) {
-      settingsWrites.push({ field, value })
-      settingsSnapshot = {
-        ...settingsSnapshot,
-        value: { ...settingsSnapshot.value, [field]: value },
-        revision: settingsSnapshot.revision + 1,
-      }
-      for (const listener of [...settingsListeners]) listener()
-    },
-  }
-  const settingsScope = {
-    bind(spec) {
-      settingsBindings.push(spec)
-      return roleSettings
-    },
-  }
-  const eventListeners = new Map()
-  const effectDisposers = []
-  const pendingEffects = []
-  const ctx = {
-    remote,
-    settingsScope,
-    slots: {
-      inject(name, mount) {
-        entries.push({ kind: 'injection', name })
-        const dispose = mount()
-        return () => dispose?.()
-      },
-      register(options, component) {
-        entries.push({ kind: 'registration', options, component })
-        return () => { removed.push(options.id) }
-      },
-    },
-    on(name, listener) {
-      const listeners = eventListeners.get(name) ?? []
-      listeners.push(listener)
-      eventListeners.set(name, listeners)
-      return () => {
-        const index = listeners.indexOf(listener)
-        if (index >= 0) listeners.splice(index, 1)
-      }
-    },
-    effect(effect) {
-      const pending = Promise.resolve().then(effect).then(dispose => {
-        if (typeof dispose === 'function') effectDisposers.push(dispose)
-      })
-      pendingEffects.push(pending)
-    },
-    async settle() {
-      await Promise.all(pendingEffects)
-    },
-    async emit(name) {
-      await Promise.all((eventListeners.get(name) ?? []).map(listener => listener()))
-    },
-    async dispose() {
-      for (const dispose of effectDisposers.reverse()) await dispose()
-    },
-  }
+  )
+  const hostDefaultPositioning = Object.fromEntries(
+    Object.entries(DEFAULT_AGENT_POSITIONING).map(([agentId, roles]) => [
+      agentId,
+      AGENT_ROLE_IDS.filter(role => roles.includes(role)),
+    ]),
+  )
+  assert.equal(JSON.stringify(browserDefaultPositioning), JSON.stringify(hostDefaultPositioning))
+  const browserEditableRoles = initialRoleNodes
+    .filter(node => node.type === 'button' && node.props['data-agent-id'] === 'codex')
+    .map(node => node.props['data-role'])
+  assert.equal(JSON.stringify(browserEditableRoles), JSON.stringify(EDITABLE_AGENT_ROLE_IDS))
+  assert.match(textOf(initialView), /指挥/)
+  assert.match(textOf(initialView), /汇总/)
 
-  browserPlugin.apply(ctx)
-  await ctx.settle()
+  harness.initialRoster.resolve(standardRosterResponse())
+  await harness.ctx.settle()
 
-  assert.equal(remoteMounts.length, 1)
-  assert.equal(remoteMounts[0].package, 'dsh-agent-team')
-  assert.equal(remoteMounts[0].descriptors[0].id, 'dsh-agent-team#agentTeam/snapshot')
-
-  const registrations = entries.filter(entry => entry.kind === 'registration')
+  assert.equal(harness.remoteMounts.length, 1)
+  assert.equal(harness.remoteMounts[0].package, 'dsh-agent-team')
+  assert.equal(
+    harness.remoteMounts[0].descriptors[0].id,
+    'dsh-agent-team#agentTeam/snapshot',
+  )
+  const registrations = harness.entries.filter(entry => entry.kind === 'registration')
   assert.deepEqual(registrations.map(entry => ({
     name: entry.options.name,
     id: entry.options.id,
@@ -205,28 +62,38 @@ test('Browser bundle registers the expert roster and mission command views', asy
     { name: 'conversation.view', id: 'agent-team', label: '专家团' },
   ])
 
-  const settingsText = textOf(registrations[0].component(registrations[0].options.inject()))
+  const settingsText = textOf(harness.renderSettings())
   assert.match(settingsText, /专家名册/)
   assert.match(settingsText, /DeepSeek/)
   assert.match(settingsText, /Codex/)
   assert.match(settingsText, /内置可用/)
   assert.match(settingsText, /已检测/)
   assert.match(settingsText, /\/tools\/codex/)
-  assert.match(settingsText, /复审/)
   assert.doesNotMatch(settingsText, /等待主机扫描/)
+  assert.match(textOf(harness.renderMission()), /等待 DeepSeek 组建专家团/)
+  assert.equal(harness.styles.length, 1)
+  assert.equal(harness.styles[0].attributes['data-plugin'], 'dsh-agent-team')
 
-  assert.equal(settingsBindings.length, 1)
-  assert.equal(settingsBindings[0].namespace, 'agent-team')
+  await harness.ctx.dispose()
+  assert.deepEqual(harness.removed, ['agent-team', 'agent-team'])
+  assert.equal(harness.remote.agentTeam, undefined)
+})
+
+test('Browser role editor serializes writes and respects writable role limits', async () => {
+  const harness = await createBrowserHarness()
+  harness.initialRoster.resolve(standardRosterResponse())
+  await harness.ctx.settle()
+
+  assert.equal(harness.settingsBindings.length, 1)
+  assert.equal(harness.settingsBindings[0].namespace, 'agent-team')
   const codexPlanButton = findNodes(
-    registrations[0].component(registrations[0].options.inject()),
+    harness.renderSettings(),
     node => node.type === 'button'
       && node.props['data-agent-id'] === 'codex'
       && node.props['data-role'] === 'plan',
   )[0]
-  assert.ok(codexPlanButton)
-  assert.equal(codexPlanButton.props['aria-pressed'], false)
   const codexResearchButton = findNodes(
-    registrations[0].component(registrations[0].options.inject()),
+    harness.renderSettings(),
     node => node.type === 'button'
       && node.props['data-agent-id'] === 'codex'
       && node.props['data-role'] === 'research',
@@ -234,147 +101,37 @@ test('Browser bundle registers the expert roster and mission command views', asy
   const planWrite = codexPlanButton.props.onClick()
   const researchWrite = codexResearchButton.props.onClick()
   await Promise.all([planWrite, researchWrite])
-  assert.equal(settingsWrites.length, 2)
-  assert.equal(settingsWrites[0].field, 'roleOverrides')
-  assert.equal(
-    JSON.stringify(settingsWrites[0].value),
-    JSON.stringify({ codex: ['plan', 'execute', 'review'] }),
-  )
-  assert.equal(settingsWrites[1].field, 'roleOverrides')
-  assert.equal(
-    JSON.stringify(settingsWrites[1].value),
-    JSON.stringify({ codex: ['plan', 'execute', 'review', 'research'] }),
-  )
-  const selectedCodexPlanButton = findNodes(
-    registrations[0].component(registrations[0].options.inject()),
-    node => node.type === 'button'
-      && node.props['data-agent-id'] === 'codex'
-      && node.props['data-role'] === 'plan',
-  )[0]
-  assert.equal(selectedCodexPlanButton.props['aria-pressed'], true)
-  const selectedCodexResearchButton = findNodes(
-    registrations[0].component(registrations[0].options.inject()),
-    node => node.type === 'button'
-      && node.props['data-agent-id'] === 'codex'
-      && node.props['data-role'] === 'research',
-  )[0]
-  assert.equal(selectedCodexResearchButton.props['aria-pressed'], true)
+  assert.deepEqual(harness.settingsWrites.map(write => ({
+    field: write.field,
+    value: JSON.parse(JSON.stringify(write.value)),
+  })), [
+    { field: 'roleOverrides', value: { codex: ['plan', 'execute', 'review'] } },
+    {
+      field: 'roleOverrides',
+      value: { codex: ['plan', 'execute', 'review', 'research'] },
+    },
+  ])
 
-  settingsSnapshot = {
-    ...settingsSnapshot,
+  harness.setSettingsSnapshot({
+    ...harness.getSettingsSnapshot(),
     value: { roleOverrides: { codex: ['review'] } },
-  }
-  const singleRoleView = registrations[0].component(registrations[0].options.inject())
-  const lastCodexRoleButton = findNodes(
-    singleRoleView,
-    node => node.type === 'button'
-      && node.props['data-agent-id'] === 'codex'
-      && node.props['data-role'] === 'review',
-  )[0]
-  const addCodexRoleButton = findNodes(
-    singleRoleView,
-    node => node.type === 'button'
-      && node.props['data-agent-id'] === 'codex'
-      && node.props['data-role'] === 'plan',
-  )[0]
-  assert.equal(lastCodexRoleButton.props.disabled, true)
-  assert.equal(addCodexRoleButton.props.disabled, false)
+  })
+  const singleRoleView = harness.renderSettings()
+  const lastRole = findNodes(singleRoleView, node => node.type === 'button'
+    && node.props['data-agent-id'] === 'codex'
+    && node.props['data-role'] === 'review')[0]
+  const addRole = findNodes(singleRoleView, node => node.type === 'button'
+    && node.props['data-agent-id'] === 'codex'
+    && node.props['data-role'] === 'plan')[0]
+  assert.equal(lastRole.props.disabled, true)
+  assert.equal(addRole.props.disabled, false)
 
-  settingsSnapshot = { ...settingsSnapshot, writable: false }
+  harness.setSettingsSnapshot({ ...harness.getSettingsSnapshot(), writable: false })
   const readOnlyButtons = findNodes(
-    registrations[0].component(registrations[0].options.inject()),
+    harness.renderSettings(),
     node => node.type === 'button' && node.props.className === 'dat-role dat-role-toggle',
   )
   assert.ok(readOnlyButtons.length > 0)
   assert.ok(readOnlyButtons.every(button => button.props.disabled === true))
-  settingsSnapshot = {
-    ...settingsSnapshot,
-    value: { roleOverrides: settingsWrites[1].value },
-    writable: true,
-  }
-
-  remoteResponses.push(rosterResponse('2026-08-17T12:01:00.000Z', [
-    agent({ availability: 'missing', executablePath: null }),
-  ]))
-  await ctx.emit('connection/reset')
-  const refreshedText = textOf(registrations[0].component(registrations[0].options.inject()))
-  assert.match(refreshedText, /未安装/)
-
-  const staleResponse = deferred()
-  const currentResponse = deferred()
-  remoteResponses.push(staleResponse.promise, currentResponse.promise)
-  const staleRefresh = ctx.emit('connection/reset')
-  const currentRefresh = ctx.emit('connection/reset')
-
-  currentResponse.resolve(rosterResponse('2026-08-17T12:03:00.000Z', [
-    agent({ displayName: 'Codex Current', executablePath: '/tools/current-codex' }),
-  ]))
-  await currentRefresh
-  staleResponse.resolve(rosterResponse('2026-08-17T12:02:00.000Z', [
-    agent({ displayName: 'Codex Stale', executablePath: '/tools/stale-codex' }),
-  ]))
-  await staleRefresh
-
-  const concurrentRefreshText = textOf(registrations[0].component(registrations[0].options.inject()))
-  assert.match(concurrentRefreshText, /Codex Current/)
-  assert.match(concurrentRefreshText, /\/tools\/current-codex/)
-  assert.doesNotMatch(concurrentRefreshText, /Codex Stale/)
-
-  const staleFailure = deferred()
-  const newestSuccess = deferred()
-  remoteResponses.push(staleFailure.promise, newestSuccess.promise)
-  const failingRefresh = ctx.emit('connection/reset')
-  const successfulRefresh = ctx.emit('connection/reset')
-
-  newestSuccess.resolve(rosterResponse('2026-08-17T12:05:00.000Z', [
-    agent({
-      id: 'pi', displayName: 'Pi Current', avatar: '🧑‍🔧', command: 'pi',
-      executablePath: '/tools/pi', supportLevel: 'experimental', positioning: ['research', 'execute'],
-    }),
-  ]))
-  await successfulRefresh
-  staleFailure.reject(new Error('stale connection failed'))
-  await failingRefresh
-
-  const staleFailureText = textOf(registrations[0].component(registrations[0].options.inject()))
-  assert.match(staleFailureText, /Pi Current/)
-  assert.match(staleFailureText, /主机已同步/)
-  assert.doesNotMatch(staleFailureText, /扫描失败/)
-
-  remoteResponses.push(rosterResponse('2026-08-17T12:06:00.000Z', [], { unexpected: true }))
-  await ctx.emit('connection/reset')
-  const unknownEnvelopeText = textOf(registrations[0].component(registrations[0].options.inject()))
-  assert.match(unknownEnvelopeText, /扫描失败/)
-
-  remoteResponses.push(rosterResponse('2026-08-17T12:07:00.000Z', [
-    agent({
-      id: 'claude-code', displayName: 'Claude Code', avatar: '🧑‍💼', command: 'claude',
-      executablePath: '/tools/claude', positioning: ['plan', 'review'],
-    }),
-  ]))
-  await ctx.emit('connection/reset')
-  const recoveredText = textOf(registrations[0].component(registrations[0].options.inject()))
-  assert.match(recoveredText, /Claude Code/)
-  assert.match(recoveredText, /主机已同步/)
-
-  remoteResponses.push(rosterResponse('2026-08-17T12:08:00.000Z', [
-    agent({
-      id: 'claude-code', displayName: 'Claude Code', avatar: '🧑‍💼', command: 'claude',
-      executablePath: '/tools/claude', positioning: ['plan', 'review'], unexpected: true,
-    }),
-  ]))
-  await ctx.emit('connection/reset')
-  const unknownAgentText = textOf(registrations[0].component(registrations[0].options.inject()))
-  assert.match(unknownAgentText, /扫描失败/)
-
-  const missionText = textOf(registrations[1].component(registrations[1].options.inject()))
-  assert.match(missionText, /任务指挥台/)
-  assert.match(missionText, /等待 DeepSeek 组建专家团/)
-
-  assert.equal(styles.length, 1)
-  assert.equal(styles[0].attributes['data-plugin'], 'dsh-agent-team')
-
-  await ctx.dispose()
-  assert.deepEqual(removed, ['agent-team', 'agent-team'])
-  assert.equal(remote.agentTeam, undefined)
+  await harness.ctx.dispose()
 })

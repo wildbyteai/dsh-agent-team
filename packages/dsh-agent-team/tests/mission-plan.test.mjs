@@ -76,6 +76,16 @@ test('MissionPlan validates a dynamic expert team instead of imposing a fixed pi
   ])
 })
 
+test('MissionPlan preserves DeepSeek as the expert-team commander', () => {
+  assert.throws(() => createMissionPlan({
+    id: 'mission-wrong-commander',
+    goal: '由 DeepSeek 指挥专家团',
+    commanderId: 'codex',
+    roster,
+    assignments: [],
+  }), /DeepSeek must remain the expert-team commander/)
+})
+
 test('MissionPlan rejects a write assignment when the selected expert is blocked', () => {
   const blockedRoster = {
     ...roster,

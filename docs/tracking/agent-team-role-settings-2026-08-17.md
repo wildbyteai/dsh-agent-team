@@ -44,6 +44,20 @@
 - 回滚：移除 settings 注册、Browser `settingsScope` 绑定和 Schemastery 依赖，恢复 `0.1.0-dev.1` 的只读 Agent 面板。
 - 替代方案：自建 JSON/YAML 配置会重复官方并发、冲突、热更新和权限逻辑，已排除。
 
+#### `@deepseek-ai/cosmokit@1.8.2`
+
+- 维护与响应：随 DeepSeek Harness 官方仓库的 vendored framework 统一发布；可审计样本为 [Discussion #694](https://github.com/deepseek-ai/deepseek-harness/discussions/694)，2026-08-14 提出后同日收到回复并链接修复 #725。该样本只证明 Harness 仓库整体仍有维护响应；未找到 cosmokit 专项 Issue 样本，因此不承诺 package-specific 响应 SLA。
+- 安装与依赖链：npm tarball 精确锁定为 `1.8.2`；包元数据无 `scripts`、无 `bin`、无下游 runtime dependencies，不执行 install/postinstall 脚本，不引入额外二进制。
+- 权限与失败模式：是 Schemastery 使用的纯 JavaScript 通用工具集，本插件不直接调用；无需网络、文件、凭证或子进程权限。包缺失或兼容性破坏会使 Schemastery 导入/校验失败，进而使 `agent-team` 设置命名空间不可用，但不会启动 Provider 或上传数据。
+
+#### `@standard-schema/spec@1.1.0`
+
+- 维护与响应：来自 Standard Schema 官方仓库的 `v1.1.0` 发布。可审计样本为 [Issue #166](https://github.com/standard-schema/standard-schema/issues/166)（2026-05-17 提出，核验日仍无 assignee 或关联 PR）与 [PR #173](https://github.com/standard-schema/standard-schema/pull/173)（2026-07-17 提出，核验日仍无 reviewer）。因此只能确认仓库有近期用户活动，不能据此认定维护响应及时，且未公开响应 SLA。
+- 安装与依赖链：npm tarball 精确锁定为 `1.1.0`；发布包无 runtime dependencies、无 `bin`、无 install/postinstall 脚本，`sideEffects: false`。包内脚本仅为仓库开发期 lint/format/build，npm 安装不会执行。
+- 权限与失败模式：仅提供 Standard Schema TypeScript 协议类型，ESM runtime 产物为空导出；无需网络、文件、凭证或子进程权限。缺失或版本不兼容主要表现为 Schemastery 安装/类型检查失败，不会主动产生运行时副作。
+
+上述两个传递依赖的统一回滚路径是移除 Schemastery 设置接入，回到 `0.1.0-dev.1` 只读面板；不单独替换其版本，避免偏离 Harness 官方锁定组合。
+
 ### 未直接依赖 `@deepseek-ai/dsh-settings`
 
 固定 Harness 基线中的该包版本为 `0.1.0-rc.5`，2026-08-17 核验到 npm 公共版本仍为 `0.0.1-rc.1`。为了避免包管理器解析到较旧实现，本插件只通过 Cordis `settings` service seam 使用它，不导入该 npm 包；命名空间常量为符合官方约束的固定字符串 `agent-team`。
@@ -52,7 +66,8 @@
 
 - Host public seam：设置提交后 `agentTeam.snapshot()` 实时返回新角色。
 - Browser public seam：角色按钮写入官方 settings scope，快速连续操作不丢失前序修改。
-- 角色约束：DeepSeek 指挥边界、未知 Agent 和空角色映射均有回归覆盖。
+- 首屏占位行为：Host 快照到达前，DeepSeek 仍显示“指挥/汇总”，默认角色按钮保持正确选中状态。
+- 角色约束：DeepSeek 指挥边界同时在角色设置和 MissionPlan 校验，未知 Agent 和空角色映射均有回归覆盖。
 - 官方 Settings File 集成：一次性临时目录成功写入 `settings.yaml`，销毁并重建 Settings Provider 与 Agent 插件后仍恢复 Codex 的 `plan + review`；非法 `coordinate` 写入被拒绝且旧值保持；临时目录随后删除。
 - 一次性 DSH Profile：包含 `@deepseek-ai/dsh-base` 与本插件的配置合成、Host 启动和 SIGINT 卸载成功。
 - 未修改用户实际 `DSH_HOME`，未调用任何真实 Agent 或模型。

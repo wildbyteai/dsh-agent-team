@@ -1,6 +1,7 @@
 import { constants } from 'node:fs'
 import { access } from 'node:fs/promises'
 import { delimiter, join } from 'node:path'
+import { DEFAULT_AGENT_POSITIONING } from './agent-role-policy.mjs'
 
 const AGENTS = [
   {
@@ -9,7 +10,7 @@ const AGENTS = [
     avatar: '🧑‍✈️',
     command: null,
     supportLevel: 'core',
-    positioning: ['coordinate', 'plan', 'execute', 'synthesize'],
+    positioning: DEFAULT_AGENT_POSITIONING.deepseek,
   },
   {
     id: 'claude-code',
@@ -17,7 +18,7 @@ const AGENTS = [
     avatar: '🧑‍💼',
     command: 'claude',
     supportLevel: 'candidate',
-    positioning: ['plan', 'review'],
+    positioning: DEFAULT_AGENT_POSITIONING['claude-code'],
   },
   {
     id: 'codex',
@@ -25,7 +26,7 @@ const AGENTS = [
     avatar: '🧑‍🔬',
     command: 'codex',
     supportLevel: 'candidate',
-    positioning: ['execute', 'review'],
+    positioning: DEFAULT_AGENT_POSITIONING.codex,
   },
   {
     id: 'antigravity',
@@ -33,7 +34,7 @@ const AGENTS = [
     avatar: '🧑‍🚀',
     command: 'agy',
     supportLevel: 'blocked',
-    positioning: ['execute'],
+    positioning: DEFAULT_AGENT_POSITIONING.antigravity,
   },
   {
     id: 'pi',
@@ -41,7 +42,7 @@ const AGENTS = [
     avatar: '🧑‍🔧',
     command: 'pi',
     supportLevel: 'experimental',
-    positioning: ['research', 'execute'],
+    positioning: DEFAULT_AGENT_POSITIONING.pi,
   },
 ]
 
