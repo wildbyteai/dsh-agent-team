@@ -9,13 +9,13 @@ const agentSchema = z.object({
   executablePath: z.string().nullable(),
   supportLevel: z.enum(['core', 'candidate', 'blocked', 'experimental']),
   positioning: z.array(z.string()),
-})
+}).strict()
 
 const rosterSnapshotSchema = z.object({
   schemaVersion: z.literal(1),
   capturedAt: z.string(),
   agents: z.array(agentSchema),
-})
+}).strict()
 
 /** Host Typert contribution loaded automatically for the plugin's Loader entry. */
 export const TYPERT = {

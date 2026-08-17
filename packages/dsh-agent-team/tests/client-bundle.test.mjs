@@ -10,6 +10,16 @@ function textOf(node) {
   return textOf(node.children)
 }
 
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
 test('Browser bundle registers the expert roster and mission command views', async () => {
   const code = await readFile(new URL('../lib/client.js', import.meta.url), 'utf8')
   let handoff
@@ -164,6 +174,117 @@ test('Browser bundle registers the expert roster and mission command views', asy
   await ctx.emit('connection/reset')
   const refreshedText = textOf(registrations[0].component(registrations[0].options.inject()))
   assert.match(refreshedText, /未安装/)
+
+  const staleResponse = deferred()
+  const currentResponse = deferred()
+  remoteResponses.push(staleResponse.promise, currentResponse.promise)
+  const staleRefresh = ctx.emit('connection/reset')
+  const currentRefresh = ctx.emit('connection/reset')
+
+  currentResponse.resolve({
+    ok: true,
+    value: {
+      schemaVersion: 1,
+      capturedAt: '2026-08-17T12:03:00.000Z',
+      agents: [{
+        id: 'codex', displayName: 'Codex Current', avatar: '🧑‍🔬', command: 'codex',
+        availability: 'detected', executablePath: '/tools/current-codex', supportLevel: 'candidate',
+        positioning: ['execute', 'review'],
+      }],
+    },
+  })
+  await currentRefresh
+  staleResponse.resolve({
+    ok: true,
+    value: {
+      schemaVersion: 1,
+      capturedAt: '2026-08-17T12:02:00.000Z',
+      agents: [{
+        id: 'codex', displayName: 'Codex Stale', avatar: '🧑‍🔬', command: 'codex',
+        availability: 'detected', executablePath: '/tools/stale-codex', supportLevel: 'candidate',
+        positioning: ['execute', 'review'],
+      }],
+    },
+  })
+  await staleRefresh
+
+  const concurrentRefreshText = textOf(registrations[0].component(registrations[0].options.inject()))
+  assert.match(concurrentRefreshText, /Codex Current/)
+  assert.match(concurrentRefreshText, /\/tools\/current-codex/)
+  assert.doesNotMatch(concurrentRefreshText, /Codex Stale/)
+
+  const staleFailure = deferred()
+  const newestSuccess = deferred()
+  remoteResponses.push(staleFailure.promise, newestSuccess.promise)
+  const failingRefresh = ctx.emit('connection/reset')
+  const successfulRefresh = ctx.emit('connection/reset')
+
+  newestSuccess.resolve({
+    ok: true,
+    value: {
+      schemaVersion: 1,
+      capturedAt: '2026-08-17T12:05:00.000Z',
+      agents: [{
+        id: 'pi', displayName: 'Pi Current', avatar: '🧑‍🔧', command: 'pi',
+        availability: 'detected', executablePath: '/tools/pi', supportLevel: 'experimental',
+        positioning: ['research', 'execute'],
+      }],
+    },
+  })
+  await successfulRefresh
+  staleFailure.reject(new Error('stale connection failed'))
+  await failingRefresh
+
+  const staleFailureText = textOf(registrations[0].component(registrations[0].options.inject()))
+  assert.match(staleFailureText, /Pi Current/)
+  assert.match(staleFailureText, /主机已同步/)
+  assert.doesNotMatch(staleFailureText, /扫描失败/)
+
+  remoteResponses.push({
+    ok: true,
+    value: {
+      schemaVersion: 1,
+      capturedAt: '2026-08-17T12:06:00.000Z',
+      unexpected: true,
+      agents: [],
+    },
+  })
+  await ctx.emit('connection/reset')
+  const unknownEnvelopeText = textOf(registrations[0].component(registrations[0].options.inject()))
+  assert.match(unknownEnvelopeText, /扫描失败/)
+
+  remoteResponses.push({
+    ok: true,
+    value: {
+      schemaVersion: 1,
+      capturedAt: '2026-08-17T12:07:00.000Z',
+      agents: [{
+        id: 'claude-code', displayName: 'Claude Code', avatar: '🧑‍💼', command: 'claude',
+        availability: 'detected', executablePath: '/tools/claude', supportLevel: 'candidate',
+        positioning: ['plan', 'review'],
+      }],
+    },
+  })
+  await ctx.emit('connection/reset')
+  const recoveredText = textOf(registrations[0].component(registrations[0].options.inject()))
+  assert.match(recoveredText, /Claude Code/)
+  assert.match(recoveredText, /主机已同步/)
+
+  remoteResponses.push({
+    ok: true,
+    value: {
+      schemaVersion: 1,
+      capturedAt: '2026-08-17T12:08:00.000Z',
+      agents: [{
+        id: 'claude-code', displayName: 'Claude Code', avatar: '🧑‍💼', command: 'claude',
+        availability: 'detected', executablePath: '/tools/claude', supportLevel: 'candidate',
+        positioning: ['plan', 'review'], unexpected: true,
+      }],
+    },
+  })
+  await ctx.emit('connection/reset')
+  const unknownAgentText = textOf(registrations[0].component(registrations[0].options.inject()))
+  assert.match(unknownAgentText, /扫描失败/)
 
   const missionText = textOf(registrations[1].component(registrations[1].options.inject()))
   assert.match(missionText, /任务指挥台/)

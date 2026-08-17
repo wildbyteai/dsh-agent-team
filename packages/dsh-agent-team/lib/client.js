@@ -7,16 +7,27 @@
       const React = require('react')
       const h = React.createElement
 
+      function hasExactKeys(value, expectedKeys) {
+        const actualKeys = Object.keys(value)
+        return actualKeys.length === expectedKeys.length
+          && expectedKeys.every(key => Object.prototype.hasOwnProperty.call(value, key))
+      }
+
       function parseRosterSnapshot(value) {
         const availability = new Set(['ready', 'detected', 'missing'])
         const supportLevels = new Set(['core', 'candidate', 'blocked', 'experimental'])
         if (value === null || typeof value !== 'object' || Array.isArray(value)
+          || !hasExactKeys(value, ['schemaVersion', 'capturedAt', 'agents'])
           || value.schemaVersion !== 1 || typeof value.capturedAt !== 'string'
           || !Array.isArray(value.agents)) {
           throw new TypeError('agentTeam snapshot has an invalid envelope')
         }
         const agents = value.agents.map(agent => {
           if (agent === null || typeof agent !== 'object' || Array.isArray(agent)
+            || !hasExactKeys(agent, [
+              'id', 'displayName', 'avatar', 'command', 'availability',
+              'executablePath', 'supportLevel', 'positioning',
+            ])
             || typeof agent.id !== 'string' || typeof agent.displayName !== 'string'
             || typeof agent.avatar !== 'string'
             || (agent.command !== null && typeof agent.command !== 'string')
@@ -484,15 +495,19 @@
             }
 
             let active = true
+            let refreshGeneration = 0
             const refreshRoster = async () => {
+              const generation = ++refreshGeneration
               rosterStore.setSnapshot({ ...rosterStore.getSnapshot(), phase: 'scanning' })
               try {
                 const answered = await ctx.remote.agentTeam.snapshot()
-                if (!active) return
+                if (!active || generation !== refreshGeneration) return
                 if (answered?.ok !== true) throw new Error('Host rejected Agent roster snapshot')
                 rosterStore.setSnapshot({ phase: 'ready', ...parseRosterSnapshot(answered.value) })
               } catch (_error) {
-                if (active) rosterStore.setSnapshot({ ...rosterStore.getSnapshot(), phase: 'error' })
+                if (active && generation === refreshGeneration) {
+                  rosterStore.setSnapshot({ ...rosterStore.getSnapshot(), phase: 'error' })
+                }
               }
             }
             const disposeReset = ctx.on('connection/reset', refreshRoster)

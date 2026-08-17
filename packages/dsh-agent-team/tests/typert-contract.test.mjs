@@ -20,4 +20,9 @@ test('Typert contract accepts the Host roster snapshot and rejects malformed wir
   const snapshot = await service.snapshot()
   assert.deepEqual(descriptor.result.schema.parse(snapshot), snapshot)
   assert.equal(descriptor.result.schema.safeParse({ schemaVersion: 2, agents: [] }).success, false)
+  assert.equal(descriptor.result.schema.safeParse({ ...snapshot, unexpected: true }).success, false)
+  assert.equal(descriptor.result.schema.safeParse({
+    ...snapshot,
+    agents: [{ ...snapshot.agents[0], unexpected: true }, ...snapshot.agents.slice(1)],
+  }).success, false)
 })
