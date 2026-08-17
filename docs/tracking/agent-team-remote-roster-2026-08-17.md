@@ -32,12 +32,15 @@
 ### `zod@4.4.3`
 
 - 维护与来源：包元数据标识作者为 Colin McDonnell，官方仓库为 `colinhacks/zod`；lockfile 固定从 npm 官方注册表获取精确版本 `4.4.3`，并保留完整性摘要。
+- 发布与活跃度（核验日期：2026-08-17）：官方最新稳定 Release 为 `v4.4.3`，发布于 2026-05-04；`main` 在核验当日仍有连续提交，最新抽样提交为 `9f0a3d8`、`604464c`、`7378e7c`，项目处于活跃维护状态。
+- Issue 响应抽样（核验日期：2026-08-17）：近期开放的 `#6397`、`#6425` 均在创建后收到自动分类反馈；近期关闭样本中 `#6414` 约 3 小时内关闭，另有多个历史问题在 2026-08-14 至 2026-08-17 被处理。该抽样说明仓库持续分流问题，但自动反馈不等同于维护者 SLA，不能据此承诺固定响应时间。
 - 许可证：MIT；插件本身仍保持 `UNLICENSED`，引入依赖不改变本项目授权状态。
 - 权限与数据边界：Zod 仅在 Host 本地校验 Typert wire 数据，不读取文件、不读取环境变量、不持有凭证、不主动联网，也不上传提示词、源码、日志或业务数据。
 - 必要性：当前 Harness 基线的 Typert Loader 会读取 Zod v4 schema 的 `_zod` 元数据；手写 `parse()` 伪 schema 无法通过官方 Loader 校验。Browser Bundle 不能直接引入该 Host 依赖，因此保留等价的轻量手写校验。
 - 失败模式：依赖缺失、版本不兼容或 schema 无法加载时，Host Typert artifact 加载失败，Browser 面板不会得到远程名册；不会启动外部 Agent 或产生模型调用。
 - 回滚：移除包的 `./typert` export、`zod` 依赖和 Browser Remote 挂载，恢复为静态只读面板；Host 的本地 `AgentRoster` 扫描可独立保留。
 - 替代方案：当前不引入额外 schema 生成器。后续若 Harness 提供稳定的 Typert 代码生成链，可由单一契约生成 Host schema 与 Browser validator，消除双端维护。
+- 核验来源：Zod 官方 GitHub Release、`main` commits 和 Issues；通过 `gh api` 只读获取，不执行第三方脚本。
 
 ## 契约维护说明
 

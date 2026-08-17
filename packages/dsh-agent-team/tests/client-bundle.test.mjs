@@ -20,6 +20,27 @@ function deferred() {
   return { promise, resolve, reject }
 }
 
+function agent(overrides = {}) {
+  return {
+    id: 'codex',
+    displayName: 'Codex',
+    avatar: '🧑‍🔬',
+    command: 'codex',
+    availability: 'detected',
+    executablePath: '/tools/codex',
+    supportLevel: 'candidate',
+    positioning: ['execute', 'review'],
+    ...overrides,
+  }
+}
+
+function rosterResponse(capturedAt, agents, envelopeOverrides = {}) {
+  return {
+    ok: true,
+    value: { schemaVersion: 1, capturedAt, agents, ...envelopeOverrides },
+  }
+}
+
 test('Browser bundle registers the expert roster and mission command views', async () => {
   const code = await readFile(new URL('../lib/client.js', import.meta.url), 'utf8')
   let handoff
@@ -62,25 +83,14 @@ test('Browser bundle registers the expert roster and mission command views', asy
   const entries = []
   const removed = []
   const remoteMounts = []
-  const remoteResponses = [{
-    ok: true,
-    value: {
-      schemaVersion: 1,
-      capturedAt: '2026-08-17T12:00:00.000Z',
-      agents: [
-        {
-          id: 'deepseek', displayName: 'DeepSeek', avatar: '🧑‍✈️', command: null,
-          availability: 'ready', executablePath: null, supportLevel: 'core',
-          positioning: ['coordinate', 'plan', 'execute', 'synthesize'],
-        },
-        {
-          id: 'codex', displayName: 'Codex', avatar: '🧑‍🔬', command: 'codex',
-          availability: 'detected', executablePath: '/tools/codex', supportLevel: 'candidate',
-          positioning: ['execute', 'review'],
-        },
-      ],
-    },
-  }]
+  const remoteResponses = [rosterResponse('2026-08-17T12:00:00.000Z', [
+    agent({
+      id: 'deepseek', displayName: 'DeepSeek', avatar: '🧑‍✈️', command: null,
+      availability: 'ready', executablePath: null, supportLevel: 'core',
+      positioning: ['coordinate', 'plan', 'execute', 'synthesize'],
+    }),
+    agent(),
+  ])]
   const remote = {
     async $mount(contribution) {
       remoteMounts.push(contribution)
@@ -159,18 +169,9 @@ test('Browser bundle registers the expert roster and mission command views', asy
   assert.match(settingsText, /复审/)
   assert.doesNotMatch(settingsText, /等待主机扫描/)
 
-  remoteResponses.push({
-    ok: true,
-    value: {
-      schemaVersion: 1,
-      capturedAt: '2026-08-17T12:01:00.000Z',
-      agents: [{
-        id: 'codex', displayName: 'Codex', avatar: '🧑‍🔬', command: 'codex',
-        availability: 'missing', executablePath: null, supportLevel: 'candidate',
-        positioning: ['execute', 'review'],
-      }],
-    },
-  })
+  remoteResponses.push(rosterResponse('2026-08-17T12:01:00.000Z', [
+    agent({ availability: 'missing', executablePath: null }),
+  ]))
   await ctx.emit('connection/reset')
   const refreshedText = textOf(registrations[0].component(registrations[0].options.inject()))
   assert.match(refreshedText, /未安装/)
@@ -181,31 +182,13 @@ test('Browser bundle registers the expert roster and mission command views', asy
   const staleRefresh = ctx.emit('connection/reset')
   const currentRefresh = ctx.emit('connection/reset')
 
-  currentResponse.resolve({
-    ok: true,
-    value: {
-      schemaVersion: 1,
-      capturedAt: '2026-08-17T12:03:00.000Z',
-      agents: [{
-        id: 'codex', displayName: 'Codex Current', avatar: '🧑‍🔬', command: 'codex',
-        availability: 'detected', executablePath: '/tools/current-codex', supportLevel: 'candidate',
-        positioning: ['execute', 'review'],
-      }],
-    },
-  })
+  currentResponse.resolve(rosterResponse('2026-08-17T12:03:00.000Z', [
+    agent({ displayName: 'Codex Current', executablePath: '/tools/current-codex' }),
+  ]))
   await currentRefresh
-  staleResponse.resolve({
-    ok: true,
-    value: {
-      schemaVersion: 1,
-      capturedAt: '2026-08-17T12:02:00.000Z',
-      agents: [{
-        id: 'codex', displayName: 'Codex Stale', avatar: '🧑‍🔬', command: 'codex',
-        availability: 'detected', executablePath: '/tools/stale-codex', supportLevel: 'candidate',
-        positioning: ['execute', 'review'],
-      }],
-    },
-  })
+  staleResponse.resolve(rosterResponse('2026-08-17T12:02:00.000Z', [
+    agent({ displayName: 'Codex Stale', executablePath: '/tools/stale-codex' }),
+  ]))
   await staleRefresh
 
   const concurrentRefreshText = textOf(registrations[0].component(registrations[0].options.inject()))
@@ -219,18 +202,12 @@ test('Browser bundle registers the expert roster and mission command views', asy
   const failingRefresh = ctx.emit('connection/reset')
   const successfulRefresh = ctx.emit('connection/reset')
 
-  newestSuccess.resolve({
-    ok: true,
-    value: {
-      schemaVersion: 1,
-      capturedAt: '2026-08-17T12:05:00.000Z',
-      agents: [{
-        id: 'pi', displayName: 'Pi Current', avatar: '🧑‍🔧', command: 'pi',
-        availability: 'detected', executablePath: '/tools/pi', supportLevel: 'experimental',
-        positioning: ['research', 'execute'],
-      }],
-    },
-  })
+  newestSuccess.resolve(rosterResponse('2026-08-17T12:05:00.000Z', [
+    agent({
+      id: 'pi', displayName: 'Pi Current', avatar: '🧑‍🔧', command: 'pi',
+      executablePath: '/tools/pi', supportLevel: 'experimental', positioning: ['research', 'execute'],
+    }),
+  ]))
   await successfulRefresh
   staleFailure.reject(new Error('stale connection failed'))
   await failingRefresh
@@ -240,48 +217,28 @@ test('Browser bundle registers the expert roster and mission command views', asy
   assert.match(staleFailureText, /主机已同步/)
   assert.doesNotMatch(staleFailureText, /扫描失败/)
 
-  remoteResponses.push({
-    ok: true,
-    value: {
-      schemaVersion: 1,
-      capturedAt: '2026-08-17T12:06:00.000Z',
-      unexpected: true,
-      agents: [],
-    },
-  })
+  remoteResponses.push(rosterResponse('2026-08-17T12:06:00.000Z', [], { unexpected: true }))
   await ctx.emit('connection/reset')
   const unknownEnvelopeText = textOf(registrations[0].component(registrations[0].options.inject()))
   assert.match(unknownEnvelopeText, /扫描失败/)
 
-  remoteResponses.push({
-    ok: true,
-    value: {
-      schemaVersion: 1,
-      capturedAt: '2026-08-17T12:07:00.000Z',
-      agents: [{
-        id: 'claude-code', displayName: 'Claude Code', avatar: '🧑‍💼', command: 'claude',
-        availability: 'detected', executablePath: '/tools/claude', supportLevel: 'candidate',
-        positioning: ['plan', 'review'],
-      }],
-    },
-  })
+  remoteResponses.push(rosterResponse('2026-08-17T12:07:00.000Z', [
+    agent({
+      id: 'claude-code', displayName: 'Claude Code', avatar: '🧑‍💼', command: 'claude',
+      executablePath: '/tools/claude', positioning: ['plan', 'review'],
+    }),
+  ]))
   await ctx.emit('connection/reset')
   const recoveredText = textOf(registrations[0].component(registrations[0].options.inject()))
   assert.match(recoveredText, /Claude Code/)
   assert.match(recoveredText, /主机已同步/)
 
-  remoteResponses.push({
-    ok: true,
-    value: {
-      schemaVersion: 1,
-      capturedAt: '2026-08-17T12:08:00.000Z',
-      agents: [{
-        id: 'claude-code', displayName: 'Claude Code', avatar: '🧑‍💼', command: 'claude',
-        availability: 'detected', executablePath: '/tools/claude', supportLevel: 'candidate',
-        positioning: ['plan', 'review'], unexpected: true,
-      }],
-    },
-  })
+  remoteResponses.push(rosterResponse('2026-08-17T12:08:00.000Z', [
+    agent({
+      id: 'claude-code', displayName: 'Claude Code', avatar: '🧑‍💼', command: 'claude',
+      executablePath: '/tools/claude', positioning: ['plan', 'review'], unexpected: true,
+    }),
+  ]))
   await ctx.emit('connection/reset')
   const unknownAgentText = textOf(registrations[0].component(registrations[0].options.inject()))
   assert.match(unknownAgentText, /扫描失败/)
