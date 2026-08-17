@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { MissionRunSnapshotSchema } from '../src/mission-snapshot.mjs'
 
 const agentSchema = z.object({
   id: z.string(),
@@ -17,37 +18,7 @@ const rosterSnapshotSchema = z.object({
   agents: z.array(agentSchema),
 }).strict()
 
-const assignmentSnapshotSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  agentId: z.string(),
-  role: z.string(),
-  mode: z.enum(['read', 'write']),
-  dependsOn: z.array(z.string()),
-  state: z.enum(['pending', 'running', 'completed', 'cancelled', 'failed']),
-  summary: z.string().nullable(),
-  error: z.string().nullable(),
-  startedAt: z.string().nullable(),
-  finishedAt: z.string().nullable(),
-}).strict()
-
-const runSnapshotSchema = z.object({
-  schemaVersion: z.literal(1),
-  id: z.string(),
-  goal: z.string(),
-  strategy: z.literal('expert-team'),
-  commanderId: z.literal('deepseek'),
-  status: z.enum(['planned', 'running', 'completed', 'cancelled', 'failed']),
-  error: z.string().nullable(),
-  openedAt: z.string(),
-  updatedAt: z.string(),
-  assignments: z.array(assignmentSnapshotSchema),
-  progress: z.object({
-    completed: z.number().int().nonnegative(),
-    total: z.number().int().nonnegative(),
-  }).strict(),
-  artifacts: z.array(z.string()),
-}).strict()
+const runSnapshotSchema = MissionRunSnapshotSchema
 
 /** Host Typert contribution loaded automatically for the plugin's Loader entry. */
 export const TYPERT = {

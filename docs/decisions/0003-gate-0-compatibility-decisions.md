@@ -1,6 +1,6 @@
 # ADR-0003：Gate 0 兼容性决策
 
-- 状态：正式无模型 Host/Browser Bundle、远程 Agent 名册、持久化角色设置与 MissionRun 演示已实现；任务账本、Adapter 和真实 Provider 待完成
+- 状态：正式无模型 Host/Browser Bundle、远程 Agent 名册、持久化角色设置、MissionRun 演示与只读任务账本恢复已实现；Adapter 和真实 Provider 待完成
 - 日期：2026-08-17
 - 输入：`docs/tracking/harness-provider-compatibility-2026-08-17.md`、`docs/tracking/gate-0-local-runtime-validation-2026-08-17.md`
 
@@ -75,8 +75,8 @@ PTY 初始失败由 `--ignore-scripts` 导致 `node-pty` 预编译 `spawn-helper
 
 以下内容仍未完成：
 
-1. AgentRoster、角色设置和无模型 MissionRun 快照已连接 Browser；当前运行态仍仅在 Host 进程内存中。
-2. 实现插件自有持久任务账本，先覆盖无副作用事件和安全恢复。
+1. MissionLedger 已覆盖脱敏 MissionRun 快照的原子持久化；重启时未完成的只读节点收敛为 `interrupted`，不恢复原进程。
+2. 扩展账本到尝试、预算、审批、Provider 快照、Artifact 引用和副作用完成证据。
 3. 使用假 CLI 验证 Adapter 的结构化输出、协议错误、超时和协议取消；通用 SIGTERM/SIGKILL 与进程树清理底座已有通过证据。
 4. 另行预览并授权后，进行 Claude/Codex 的最小真实 Provider 调用。
 5. Antigravity 升级和 Pi 外部沙箱属于后续独立授权动作。

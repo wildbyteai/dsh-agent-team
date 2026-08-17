@@ -75,9 +75,11 @@
 
       function parseMissionSnapshot(value) {
         if (value === null) return null
-        const runStatuses = new Set(['planned', 'running', 'completed', 'cancelled', 'failed'])
+        const runStatuses = new Set([
+          'planned', 'running', 'completed', 'cancelled', 'failed', 'interrupted',
+        ])
         const assignmentStates = new Set([
-          'pending', 'running', 'completed', 'cancelled', 'failed',
+          'pending', 'running', 'completed', 'cancelled', 'failed', 'interrupted',
         ])
         if (value === null || typeof value !== 'object' || Array.isArray(value)
           || !hasExactKeys(value, [
@@ -243,7 +245,7 @@
       }
 
       function createMissionController(remote, store) {
-        const terminalStatuses = new Set(['completed', 'cancelled', 'failed'])
+        const terminalStatuses = new Set(['completed', 'cancelled', 'failed', 'interrupted'])
         const staleResponse = Symbol('stale mission response')
         let pollTimer
         let requestGeneration = 0
@@ -622,6 +624,7 @@
 }
 .dat-task[data-state="running"] { border-color: rgba(15, 157, 138, .4); animation: dat-task-pulse 1.6s ease-in-out infinite; }
 .dat-task[data-state="failed"] { border-color: rgba(182, 75, 69, .4); }
+.dat-task[data-state="interrupted"] { border-color: rgba(216, 137, 36, .4); }
 .dat-task-avatar { font-size: 22px; }
 .dat-task strong { display: block; font-size: 13px; }
 .dat-task p { margin: 4px 0 0; color: var(--dat-muted); font-size: 11px; line-height: 1.45; }
@@ -739,6 +742,7 @@
         completed: '已完成',
         cancelled: '已取消',
         failed: '失败',
+        interrupted: '已中断',
       }
 
       function AgentCard(agent, phase, settingsSnapshot, roleEditor) {

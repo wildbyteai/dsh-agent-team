@@ -2,7 +2,7 @@
 
 `dsh-agent-team` 是一个面向 DeepSeek Harness 的本地 Agent 专家团插件实验。它让 DeepSeek 根据任务动态选择合适的 Agent，并由确定性 Host 运行时约束名单、角色、权限和 UI 状态。
 
-项目当前处于无模型纵向切片：已经实现 Agent 名册、可持久化角色定位、任务分派校验、运行状态投影和可视化无模型协作演示。Browser 面板通过官方 Typert Remote API 读取 Host 的 PATH 扫描与 MissionRun 快照，并通过官方 user-settings seam 保存角色修改；尚未调用真实 Provider，也尚未提供生产可用的多 Agent 执行。
+项目当前处于无模型纵向切片：已经实现 Agent 名册、可持久化角色定位、任务分派校验、运行状态投影、可视化无模型协作演示和本地 MissionLedger。Browser 面板通过官方 Typert Remote API 读取 Host 的 PATH 扫描与 MissionRun 快照，并通过官方 user-settings seam 保存角色修改；Host 重启后会把未完成的只读演示安全收敛为“已中断”。尚未调用真实 Provider，也尚未提供生产可用的多 Agent 执行。
 
 ## 产品方向
 
@@ -19,6 +19,7 @@
 - `AgentRoster`：只读扫描本机可执行入口，分离“是否检测到”和“是否正式支持”。
 - `MissionPlan`：校验动态专家分派图，支持并行任务，不强制“规划—执行—复审”固定顺序。
 - `RunProjection`：把任务事件归并为 Browser 可消费的不可变快照。
+- `MissionLedger`：以原子 JSON 文件保存脱敏 MissionRun 快照，Host 重启后恢复终态或把未完成只读任务标记为中断。
 - `MissionRun`：以假执行器验证并行专家、依赖交接、完成、失败和取消状态，不启动 Provider。
 - Host 插件：提供 `agentTeam` 服务及严格校验的 AgentRoster/MissionRun Remote 入口。
 - Browser 插件：注册 Agent 面板和会话任务指挥台，显示真实安装状态以及无模型演示的实时任务节点。
@@ -46,7 +47,7 @@ npm pack --dry-run --json
 
 ## 安全状态
 
-当前版本不是生产就绪版本，不应被用于无人监督的写操作。真实 Provider 调用、安装或升级、外部网络访问、凭证读取、持久任务恢复和副作用重试均不属于当前实现。
+当前版本不是生产就绪版本，不应被用于无人监督的写操作。当前持久化只覆盖脱敏的无模型 MissionRun 快照；真实 Provider 调用、Provider 会话恢复、安装或升级、外部网络访问、凭证读取和副作用重试均不属于当前实现。
 
 ## License
 

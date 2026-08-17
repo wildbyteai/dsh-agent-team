@@ -111,6 +111,37 @@ test('Browser mission view resumes polling a running Host mission after reconnec
   await harness.ctx.dispose()
 })
 
+test('Browser mission view renders a recovered Host mission as interrupted', async () => {
+  const harness = await createBrowserHarness()
+  harness.initialRoster.resolve(standardRosterResponse())
+  await harness.ctx.settle()
+  harness.missionResponses.push({
+    ok: true,
+    value: missionSnapshot({
+      status: 'interrupted',
+      error: 'Host 重启前任务尚未完成，已安全标记为中断',
+      assignments: missionSnapshot().assignments.map(assignment => ({
+        ...assignment,
+        state: assignment.state === 'pending' ? 'interrupted' : assignment.state,
+        error: assignment.state === 'pending' ? 'Host 重启时节点仍未完成' : assignment.error,
+        finishedAt: assignment.state === 'pending'
+          ? '2026-08-17T13:05:00.000Z'
+          : assignment.finishedAt,
+      })),
+      updatedAt: '2026-08-17T13:05:00.000Z',
+    }),
+  })
+
+  await harness.ctx.emit('connection/reset')
+
+  const view = harness.renderMission()
+  assert.match(textOf(view), /已中断/)
+  assert.match(textOf(view), /Host 重启前任务尚未完成/)
+  assert.ok(action(view, 'start-demo'))
+  assert.equal(harness.activeIntervalCount(), 0)
+  await harness.ctx.dispose()
+})
+
 test('Browser mission polling ignores an older running snapshot after completion', async () => {
   const harness = await createBrowserHarness()
   harness.initialRoster.resolve(standardRosterResponse())

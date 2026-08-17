@@ -1,6 +1,6 @@
 # ADR-0001：DeepSeek Harness Agent 团队协作与质量门禁插件
 
-- 状态：已接受；无模型专家团面板、角色设置与 Host→Browser MissionRun 演示已实现
+- 状态：已接受；无模型专家团面板、角色设置、MissionRun 演示与只读任务账本恢复已实现
 - 日期：2026-08-17
 - 决策所有者：项目所有者
 - 依据：当前对话已确认方案、PlanLens 评审、CC Switch 源码调研

@@ -11,6 +11,10 @@ export function createRunProjectionStore(options = {}) {
   const runs = new Map()
 
   return {
+    restore(snapshot) {
+      runs.set(snapshot.id, structuredClone(snapshot))
+    },
+
     open(plan) {
       const openedAt = now()
       runs.set(plan.id, {
@@ -63,12 +67,26 @@ export function createRunProjectionStore(options = {}) {
         return
       }
 
+      if (event.type === 'mission.interrupted') {
+        run.status = 'interrupted'
+        run.error = event.error
+        for (const assignment of run.assignments) {
+          if (assignment.state === 'completed') continue
+          assignment.state = 'interrupted'
+          assignment.error = event.assignmentError
+          assignment.finishedAt = event.at
+        }
+        run.updatedAt = event.at
+        return
+      }
+
       if (event.type === 'mission.failed') {
         run.status = 'failed'
         run.error = event.error
         for (const assignment of run.assignments) {
           if (assignment.state === 'completed') continue
           assignment.state = 'failed'
+          if (assignment.id === event.assignmentId) assignment.error = event.error
           assignment.finishedAt = event.at
         }
         run.updatedAt = event.at

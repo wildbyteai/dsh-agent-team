@@ -5,9 +5,16 @@ import { TYPERT } from '../lib/typert.host.js'
 
 test('Typert contract validates roster and mission-run snapshots', async () => {
   let service
+  let durableMission = null
   AgentTeamPlugin({
     provide(name, value) {
       if (name === 'agentTeam') service = value
+    },
+  }, {
+    ledger: {
+      async recoverLatest() { return durableMission },
+      async save(snapshot) { durableMission = structuredClone(snapshot) },
+      async close() {},
     },
   })
 
@@ -38,13 +45,14 @@ test('Typert contract validates roster and mission-run snapshots', async () => {
   assert.ok(missionSnapshot)
   assert.ok(startDemo)
   assert.ok(cancelMission)
-  assert.deepEqual(missionSnapshot.result.schema.parse(service.missionSnapshot()), null)
+  assert.deepEqual(missionSnapshot.result.schema.parse(await service.missionSnapshot()), null)
 
-  const started = service.startDemo()
+  const started = await service.startDemo()
   assert.deepEqual(startDemo.result.schema.parse(started), started)
   assert.equal(started.status, 'running')
-  const cancelled = service.cancelMission()
+  const cancelled = await service.cancelMission()
   assert.deepEqual(cancelMission.result.schema.parse(cancelled), cancelled)
   assert.equal(cancelled.status, 'cancelled')
   assert.equal(startDemo.result.schema.safeParse({ ...started, unexpected: true }).success, false)
+  await service.missions.wait()
 })
