@@ -1,0 +1,55 @@
+schema_version: 1
+status: draft-no-model-calls
+frozen_at: null
+purpose: compare DeepSeek-only delivery with external planning and independent review
+
+variants:
+  - id: D0
+    planner: deepseek
+    executor: deepseek
+    reviewer: none
+  - id: D1
+    planner: external
+    executor: deepseek
+    reviewer: none
+  - id: D2
+    planner: deepseek
+    executor: deepseek
+    reviewer: external
+  - id: D3
+    planner: external
+    executor: configured
+    reviewer: external
+
+cases:
+  - id: git-001
+    type: git
+    spec: cases/git-001.md
+    fixture: fixtures/git-001
+    enabled: false
+    disabled_reason: fixture and public test seam not yet confirmed
+  - id: report-001
+    type: non-git-artifact
+    spec: cases/report-001.md
+    fixture: fixtures/report-001
+    enabled: true
+
+repetitions:
+  smoke: 1
+  formal: 2
+
+limits:
+  per_run_timeout_minutes: 20
+  max_rework_rounds: 2
+  max_agent_calls_per_run: 8
+  external_network_for_task: false
+
+provider_selection:
+  deepseek: null
+  planner: null
+  executor: null
+  reviewer: null
+
+notes:
+  - Provider and exact model IDs must be frozen before the preview.
+  - This manifest does not authorize model calls.

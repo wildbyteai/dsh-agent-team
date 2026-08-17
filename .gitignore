@@ -1,0 +1,12 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.planlens/
+AGENTS.md
+node_modules/
+coverage/
+*.log
+*.tgz
+.npm/
+.dsh-home/

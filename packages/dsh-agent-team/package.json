@@ -1,0 +1,39 @@
+{
+  "name": "dsh-agent-team",
+  "version": "0.1.0-dev.0",
+  "description": "Local expert-team orchestration plugin for DeepSeek Harness",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.mjs",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./client": "./lib/client.js",
+    "./agent-roster": "./src/agent-roster.mjs",
+    "./mission-plan": "./src/mission-plan.mjs",
+    "./run-projection": "./src/run-projection.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "cordis.patch.yml",
+    "src/**/*.mjs",
+    "lib/client.js"
+  ],
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "check": "node --check src/agent-roster.mjs && node --check src/mission-plan.mjs && node --check src/run-projection.mjs && node --check src/index.mjs && node --check lib/client.js"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ],
+      "platform": "web"
+    }
+  },
+  "license": "UNLICENSED"
+}

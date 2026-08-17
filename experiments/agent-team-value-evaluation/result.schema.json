@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/deepseek-harness/agent-team-evaluation-result.schema.json",
+  "title": "Agent team evaluation result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id",
+    "case_id",
+    "variant",
+    "status",
+    "started_at",
+    "finished_at",
+    "deterministic_checks",
+    "blind_review",
+    "rework_rounds",
+    "human_interventions",
+    "agent_calls",
+    "artifacts"
+  ],
+  "properties": {
+    "run_id": {"type": "string", "minLength": 1},
+    "case_id": {"type": "string", "minLength": 1},
+    "variant": {"enum": ["D0", "D1", "D2", "D3"]},
+    "status": {"enum": ["success", "failure", "timeout", "cancelled"]},
+    "started_at": {"type": "string", "format": "date-time"},
+    "finished_at": {"type": "string", "format": "date-time"},
+    "provider_snapshot": {"type": "object"},
+    "deterministic_checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "status"],
+        "properties": {
+          "name": {"type": "string"},
+          "status": {"enum": ["pass", "fail", "not-run"]},
+          "evidence": {"type": "string"}
+        }
+      }
+    },
+    "blind_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blockers", "warnings", "suggestions", "rubric_score"],
+      "properties": {
+        "blockers": {"type": "integer", "minimum": 0},
+        "warnings": {"type": "integer", "minimum": 0},
+        "suggestions": {"type": "integer", "minimum": 0},
+        "rubric_score": {"type": "integer", "minimum": 0, "maximum": 24}
+      }
+    },
+    "rework_rounds": {"type": "integer", "minimum": 0},
+    "human_interventions": {"type": "integer", "minimum": 0},
+    "agent_calls": {"type": "integer", "minimum": 0},
+    "usage": {"type": "object"},
+    "artifacts": {"type": "array", "items": {"type": "string"}},
+    "notes": {"type": "string"}
+  }
+}

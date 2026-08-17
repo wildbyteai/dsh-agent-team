@@ -1,0 +1,29 @@
+import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+import test from 'node:test'
+
+test('package exposes one static DSH bundle with Host and Browser halves', async () => {
+  const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+  const patch = await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
+
+  assert.equal(manifest.name, 'dsh-agent-team')
+  assert.equal(manifest.main, './src/index.mjs')
+  assert.equal(manifest.exports['./client'], './lib/client.js')
+  assert.deepEqual(manifest.dsh, {
+    bundle: { patch: './cordis.patch.yml' },
+    client: {
+      inject: [
+        '@deepseek-ai/dsh-client-runtime',
+        '@deepseek-ai/dsh-client-ui-settings',
+        '@deepseek-ai/dsh-client-ui-conversation',
+      ],
+      platform: 'web',
+    },
+  })
+  assert.equal(patch, [
+    '- insert:',
+    '    - id: dsh-agent-team',
+    '      name: dsh-agent-team',
+    '',
+  ].join('\n'))
+})
