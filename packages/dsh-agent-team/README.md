@@ -2,7 +2,7 @@
 
 DeepSeek Harness 的本地 Agent 专家团插件。DeepSeek 负责理解目标、选择专家、分派任务和汇总结论；确定性 Host 服务负责名单、任务计划校验和 UI 状态投影。
 
-当前是无模型纵向切片，不调用真实 Provider。Host 的 Agent 名册和 MissionRun 投影已经通过 Harness Typert Remote API 接到 Browser 面板，角色定位通过官方 user-settings seam 持久化，MissionRun 快照由插件自有 MissionLedger 保存。
+当前是无模型纵向切片，不调用真实 Provider。Host 的 Agent 名册和 MissionRun 投影已经通过 Harness Typert Remote API 接到 Browser 面板，角色定位通过官方 user-settings seam 持久化，MissionRun 快照由插件自有 MissionLedger 保存；通用 JSON CLI Adapter 已通过假进程验证。
 
 ## 当前能力
 
@@ -12,6 +12,8 @@ DeepSeek Harness 的本地 Agent 专家团插件。DeepSeek 负责理解目标�
 - `RunProjection`：把任务事件归并成 Browser 可消费的不可变快照。
 - `MissionLedger`：默认写入 `$DSH_HOME/dsh-agent-team/v1/missions.json`，使用所有者权限目录/文件和原子替换，严格校验每个持久快照。
 - `MissionRun`：运行一条无模型只读专家团演示，Claude Code 与 Codex 并行，DeepSeek 在依赖完成后汇总；支持 completed/cancelled/failed/interrupted 终态。
+- `JsonCliAdapter`：使用固定 argv、显式 stdin/stdout/stderr 策略和严格 Zod 信封；统一区分协议错误、进程错误、超时、用户取消和终止失败。
+- Adapter 取消：先写 JSONL `cancel`，等待有限宽限期，再调用 Harness subprocess handle 终止并等待整棵进程树退出。
 - Host：通过 `ctx.provide('agentTeam', service)` 只提供经过恢复门禁的 MissionRun facade，并导出严格校验的 AgentRoster/MissionRun Remote 入口。
 - Browser：注册 `settings.section` 和 `conversation.view`；专家名册显示 Host 返回的安装状态，任务指挥台可启动、跟踪和取消无模型演示。
 - 角色设置：在 Agent 卡片中编辑规划、执行、复审、研究定位；DeepSeek 固定保留指挥与汇总，修改保存到 `agent-team.roleOverrides`。
@@ -20,8 +22,8 @@ DeepSeek Harness 的本地 Agent 专家团插件。DeepSeek 负责理解目标�
 ## 当前限制
 
 - 当前只编辑角色定位；尚未提供 Agent 启用/禁用、团队模板、头像或 Provider 选择。
-- 尚未探测版本、鉴权、冲突安装或 Provider Adapter 状态。
-- 尚未启动 Subagent、Workflow、CLI 或真实模型。
+- 尚未探测版本、鉴权、冲突安装或真实 Provider Adapter 状态。
+- 尚未启动 Subagent、Workflow 或真实 Agent CLI；当前只运行仓库内假 CLI fixture。
 - `MissionRun` 只使用内置假执行器，不代表 Claude Code/Codex Provider 已接入。
 - 当前只恢复脱敏 MissionRun 快照；Host 重启时未完成节点统一标记为 `interrupted`，不会续跑原进程。
 - 尚未持久化预算、审批、Provider 会话、Artifact 内容或副作用证据，也不会自动重试任何写入。
@@ -34,6 +36,7 @@ src/index.mjs           Host 插件入口
 src/agent-role-policy.mjs Agent 角色、指挥边界与默认定位
 src/agent-roster.mjs    专家名单与 PATH 发现
 src/agent-team-settings.mjs 角色设置 schema 与指挥边界
+src/cli-adapter.mjs   受管 JSON CLI 协议、信封和取消升级
 src/mission-plan.mjs    专家任务分派校验
 src/mission-ledger.mjs  原子快照持久化与安全恢复
 src/mission-run.mjs     无模型任务调度、持久提交、取消与中断
@@ -41,6 +44,7 @@ src/mission-snapshot.mjs MissionRun 严格共享 schema
 src/run-projection.mjs  UI 状态投影
 lib/client.js           零构建依赖的 Browser client artifact
 tests/                  public seam 行为测试
+tests/fixtures/         不调用模型的本地假 CLI
 ```
 
 ## 本地验证

@@ -1,6 +1,6 @@
 # ADR-0002：首条纵向闭环实施计划
 
-- 状态：无模型专家团面板、持久化角色设置、Host→Browser MissionRun 演示和只读任务账本恢复已实现；Adapter 和真实 Provider 待完成
+- 状态：无模型专家团面板、持久化角色设置、Host→Browser MissionRun 演示、只读任务账本恢复和通用假 CLI Adapter 已实现；真实 Provider 待完成
 - 日期：2026-08-17
 - 目标：在不做后台孤岛原型的前提下，交付一条可见、可运行、可验证的端到端闭环
 
@@ -18,7 +18,7 @@
 
 核心本机运行证据已经补齐：UI Slot、Settings、Conversation View、Workflow、Session 持久化/检查点、Subprocess、Host 退出时普通/PTY 进程树清理、Bundle/Profile 安装与生命周期、Browser 模块加载均通过官方测试。详见 `docs/tracking/gate-0-local-runtime-validation-2026-08-17.md`。
 
-Gate 0 的正式最小 Host + Browser Bundle 已在 `packages/dsh-agent-team` 实现，并在临时 Profile 完成安装、Host 启动和 Browser Module Registry 冒烟。Agent 名册、持久化角色设置和无模型 MissionRun 快照已接入 Browser；指挥台能展示并行、依赖、完成、失败、取消和重启中断。插件自有 MissionLedger 已覆盖脱敏快照的原子持久化与只读安全恢复；假 CLI Adapter 和真实 Provider 回归仍未实现。
+Gate 0 的正式最小 Host + Browser Bundle 已在 `packages/dsh-agent-team` 实现，并在临时 Profile 完成安装、Host 启动和 Browser Module Registry 冒烟。Agent 名册、持久化角色设置和无模型 MissionRun 快照已接入 Browser；指挥台能展示并行、依赖、完成、失败、取消和重启中断。插件自有 MissionLedger 已覆盖脱敏快照的原子持久化与只读安全恢复；通用 JSON CLI Adapter 已使用假进程验证结构化输出、协议错误、超时、取消宽限期和进程树终止。真实 Provider 回归仍未实现。
 
 完成以下核验后才能创建正式插件脚手架：
 

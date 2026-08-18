@@ -7,11 +7,12 @@ test('package exposes one static DSH bundle with Host and Browser halves', async
   const patch = await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
 
   assert.equal(manifest.name, 'dsh-agent-team')
-  assert.equal(manifest.version, '0.1.0-dev.4')
+  assert.equal(manifest.version, '0.1.0-dev.5')
   assert.equal(manifest.main, './src/index.mjs')
   assert.equal(manifest.exports['./client'], './lib/client.js')
   assert.equal(manifest.exports['./typert'], './lib/typert.host.js')
   assert.equal(manifest.exports['./agent-team-settings'], './src/agent-team-settings.mjs')
+  assert.equal(manifest.exports['./cli-adapter'], './src/cli-adapter.mjs')
   assert.equal(manifest.exports['./mission-ledger'], './src/mission-ledger.mjs')
   assert.equal(manifest.exports['./mission-run'], './src/mission-run.mjs')
   assert.equal(manifest.exports['./mission-snapshot'], './src/mission-snapshot.mjs')

@@ -61,6 +61,7 @@ Agent 卡片必须分别显示，不能合并成单一“已安装”：
 - 首版 Provider Session 不承诺跨 Harness 重启续接；只承诺任务级恢复。
 - Runtime 统一持有 Deadline；先发协议取消，宽限期后终止进程树。
 - Provider 输出只生成提议，由 Adapter Envelope Validator 和 Runtime 决定权威状态。
+- 通用 JSON CLI Adapter 底座已经由假进程验证；每个真实 Provider 仍需单独验证 argv、协议、版本、权限、鉴权和输出映射。
 - 写节点必须同时满足：版本已验证、Adapter 已验证、权限策略已验证、Workspace/OS 沙箱已验证。
 - 无完成证据的副作用节点不得自动重跑。
 

@@ -102,6 +102,6 @@ Host 插入唯一的 `dsh-agent-team` 行并提供 `ctx.agentTeam` 服务。Brow
 
 1. 使用 Harness Remote 机制把 Host 的 `AgentRosterSnapshot` 和 `RunProjection` 连接到 Browser。
 2. 增加本地持久任务账本，先覆盖无副作用事件和安全恢复。
-3. 用假 CLI Adapter 验证启动、结构化结果、超时、协议取消和进程树终止。
+3. 假 CLI Adapter 已验证启动、结构化结果、协议错误、超时、协议取消和进程树终止；真实 Provider 映射仍待单独授权与实现。
 4. 完成面板中的用户角色定位编辑与保存。
 5. 真实 Provider 调用继续要求独立预览和授权。
